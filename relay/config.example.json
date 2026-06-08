@@ -1,0 +1,17 @@
+{
+  "NOMAD_IP": "192.168.0.10",
+  "EOS_RX_PORT": 8000,
+  "HTTP_PORT": 8765,
+  "BIND_ADDR": "0.0.0.0",
+  "TOKEN": "CHANGE_ME-run: python3 -c \"import secrets; print(secrets.token_urlsafe(32))\"",
+  "LOG_FILE": "",
+  "macro_map": {
+    "blackout": 901,
+    "restore": 902
+  },
+  "key_map": {
+    "go": "go_0",
+    "stop_back": "stop_back_main_cuelist"
+  },
+  "destructive_policy": "record_update"
+}

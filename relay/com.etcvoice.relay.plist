@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd autostart for the ETC Nomad voice relay (on the techbooth Mac).
+
+  Install:
+    cp "/Users/techbooth/Opie/relay/com.etcvoice.relay.plist" \
+       ~/Library/LaunchAgents/
+    launchctl load  ~/Library/LaunchAgents/com.etcvoice.relay.plist
+  Stop / remove:
+    launchctl unload ~/Library/LaunchAgents/com.etcvoice.relay.plist
+  Restart after editing config.json:
+    launchctl kickstart -k gui/$(id -u)/com.etcvoice.relay
+
+  Adjust the python path if you use Homebrew python (e.g. /opt/homebrew/bin/python3).
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.etcvoice.relay</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/python3</string>
+        <string>/Users/techbooth/Opie/relay/relay.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/techbooth/Opie/relay</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/techbooth/Opie/relay/relay.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/techbooth/Opie/relay/relay.err.log</string>
+</dict>
+</plist>

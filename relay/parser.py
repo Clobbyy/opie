@@ -1,0 +1,530 @@
+"""
+Natural-language -> ETC Eos OSC translator.
+
+Rule-based only. No LLM, no API calls, no network — given a spoken phrase (as text
+from Siri dictation) it returns a small set of OSC messages plus a human-readable
+confirmation that the Shortcut speaks back.
+
+Design choices (see docs/OSC_REFERENCE.md for the full command reference):
+  * Single targets use the explicit, immediate-execute OSC forms
+    (e.g. /eos/chan/5/full, /eos/chan/5 = 50.0). These are stateless and don't
+    depend on the console's command line.
+  * Ranges / lists / relative changes use the command-line form /eos/cmd "...#"
+    because explicit per-channel OSC can't express "1 thru 8" in one message.
+  * Safety verbs (blackout, restore, etc.) fire a USER-DEFINED Eos macro number
+    from config["macro_map"] — reversible and under the programmer's control.
+  * Destructive command-line verbs are never emitted by this parser; relay.py
+    also enforces a whitelist as a second line of defence.
+
+Public API:
+    result = parse(phrase: str, config: dict) -> ParseResult
+    ParseResult.ok           -> bool
+    ParseResult.messages     -> list[(address: str, args: list)]
+    ParseResult.confirmation -> str   (spoken back to the user)
+"""
+
+import re
+from dataclasses import dataclass, field
+
+
+@dataclass
+class ParseResult:
+    ok: bool
+    confirmation: str
+    messages: list = field(default_factory=list)  # list of (address, [args])
+
+
+# --------------------------------------------------------------------------- #
+# Number-word handling                                                         #
+# --------------------------------------------------------------------------- #
+
+_ONES = {
+    "zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9,
+}
+_TEENS = {
+    "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13, "fourteen": 14,
+    "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+}
+_TENS = {
+    "twenty": 20, "thirty": 30, "forty": 40, "fifty": 50,
+    "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90,
+}
+_NUMWORDS = set(_ONES) | set(_TEENS) | set(_TENS) | {"hundred", "thousand"}
+
+
+def _run_to_int(words):
+    """Convert a run of number-words (e.g. ['twenty','three']) to an int (23)."""
+    total = 0
+    current = 0
+    for w in words:
+        if w in _ONES:
+            current += _ONES[w]
+        elif w in _TEENS:
+            current += _TEENS[w]
+        elif w in _TENS:
+            current += _TENS[w]
+        elif w == "hundred":
+            current = (current or 1) * 100
+        elif w == "thousand":
+            total += (current or 1) * 1000
+            current = 0
+    return total + current
+
+
+def normalize_numbers(text: str) -> str:
+    """Replace spelled-out number runs with digits ('channel five' -> 'channel 5')."""
+    tokens = text.split()
+    out = []
+    run = []
+    for tok in tokens:
+        if tok in _NUMWORDS:
+            run.append(tok)
+        else:
+            if run:
+                out.append(str(_run_to_int(run)))
+                run = []
+            out.append(tok)
+    if run:
+        out.append(str(_run_to_int(run)))
+    return " ".join(out)
+
+
+# --------------------------------------------------------------------------- #
+# Vocabulary tables                                                            #
+# --------------------------------------------------------------------------- #
+
+# target keyword -> (osc path segment, Eos command-line keyword)
+_TARGETS = [
+    (re.compile(r"\b(?:channels?|chans?|ch)\b"), ("chan", "Chan")),
+    (re.compile(r"\b(?:groups?|grp)\b"), ("group", "Group")),
+    (re.compile(r"\b(?:submasters?|subs?)\b"), ("sub", "Sub")),
+    (re.compile(r"\b(?:addresses|address|addr)\b"), ("addr", "Address")),
+]
+
+# approximate RGB (0..1). Documented as starting points; tune to taste.
+_COLORS = {
+    "red": (1.0, 0.0, 0.0), "green": (0.0, 1.0, 0.0), "blue": (0.0, 0.0, 1.0),
+    "white": (1.0, 1.0, 1.0), "amber": (1.0, 0.75, 0.0), "orange": (1.0, 0.5, 0.0),
+    "yellow": (1.0, 1.0, 0.0), "cyan": (0.0, 1.0, 1.0), "magenta": (1.0, 0.0, 1.0),
+    "pink": (1.0, 0.4, 0.7), "purple": (0.5, 0.0, 0.5), "lavender": (0.6, 0.4, 0.8),
+    "teal": (0.0, 0.5, 0.5), "warm": (1.0, 0.8, 0.6), "cool": (0.6, 0.8, 1.0),
+}
+
+_RANGE_WORDS = {"through", "thru", "-"}
+_LIST_WORDS = {"and", "plus", "+", "&"}
+
+# default console key names (overridable via config["key_map"])
+_DEFAULT_KEYS = {"go": "go_0", "stop_back": "stop_back_main_cuelist"}
+
+# Moving-light / parameter names recognised in natural phrasing
+# (spoken word -> Eos parameter name used in OSC /param/<name> and command line).
+_PARAMS = {
+    "pan": "pan", "tilt": "tilt", "zoom": "zoom", "iris": "iris",
+    "edge": "edge", "focus": "focus", "frost": "frost", "diffusion": "diffusion",
+    "gobo": "gobo", "hue": "hue", "saturation": "saturation", "cto": "cto",
+    "red": "red", "green": "green", "blue": "blue", "white": "white",
+    "amber": "amber", "cyan": "cyan", "magenta": "magenta", "yellow": "yellow",
+}
+_PARAM_RX = re.compile(
+    r"\b(" + "|".join(sorted(_PARAMS, key=len, reverse=True)) +
+    r")\s+(-?\d+(?:\.\d+)?)\b")
+
+# Raw command-line passthrough: multi-word spoken phrases -> Eos tokens.
+# Applied (longest first) before single-word translation in _spoken_to_cmd().
+_CMD_PHRASES = [
+    ("go to cue", "Go_To_Cue"), ("color palette", "Color_Palette"),
+    ("colour palette", "Color_Palette"), ("intensity palette", "Intensity_Palette"),
+    ("focus palette", "Focus_Palette"), ("beam palette", "Beam_Palette"),
+    ("record only", "Record_Only"), ("cue only", "Cue_Only"),
+    ("rem dim", "Rem_Dim"), ("make manual", "Make_Manual"),
+    ("mark", "Mark"), ("about", "About"), ("undo", "Undo"),
+]
+_CMD_WORDS = {
+    "channel": "Chan", "channels": "Chan", "chan": "Chan", "ch": "Chan",
+    "group": "Group", "groups": "Group", "sub": "Sub", "submaster": "Sub",
+    "subs": "Sub", "cue": "Cue", "preset": "Preset", "macro": "Macro",
+    "address": "Address", "addr": "Address",
+    "thru": "Thru", "through": "Thru", "to": "Thru",
+    "at": "At", "full": "Full", "out": "Out", "home": "Home",
+    "and": "+", "plus": "+", "minus": "-",
+    "record": "Record", "update": "Update", "delete": "Delete",
+    "copy": "Copy", "move": "Move", "label": "Label", "block": "Block",
+    "sneak": "Sneak", "highlight": "Highlight", "park": "Park", "unpark": "Unpark",
+    "intensity": "Intensity", "color": "Color", "colour": "Color",
+    "focus": "Focus", "beam": "Beam", "time": "Time", "fan": "Fan",
+    "enter": "#", "go": "Go", "stop": "Stop", "back": "Back",
+    "pan": "Pan", "tilt": "Tilt", "zoom": "Zoom", "iris": "Iris",
+    "edge": "Edge", "frost": "Frost", "gobo": "Gobo", "hue": "Hue",
+    "saturation": "Saturation",
+}
+
+
+def _spoken_to_cmd(spoken: str) -> str:
+    """Translate a spoken Eos command into a command-line string for /eos/cmd."""
+    s = " " + spoken.lower().strip() + " "
+    for phrase, token in _CMD_PHRASES:
+        s = s.replace(" " + phrase + " ", " " + token + " ")
+    out = []
+    for tok in s.split():
+        if re.fullmatch(r"-?\d+(?:\.\d+)?(?:/\d+(?:\.\d+)?)?", tok):
+            out.append(tok)                      # leave numbers (and list/cue refs)
+        elif tok in _CMD_WORDS:
+            out.append(_CMD_WORDS[tok])
+        elif tok and tok[0].isupper():
+            out.append(tok)                      # already-translated token
+        else:
+            out.append(tok.capitalize())         # best-effort for unknown words
+    cmd = " ".join(out).strip()
+    if not cmd.endswith("#"):
+        cmd += "#"
+    return cmd
+
+
+def _clamp(v, lo, hi):
+    return max(lo, min(hi, v))
+
+
+def _first_int(tokens):
+    for t in tokens:
+        if re.fullmatch(r"\d+", t):
+            return int(t)
+    return None
+
+
+# --------------------------------------------------------------------------- #
+# Level / action parsing                                                       #
+# --------------------------------------------------------------------------- #
+
+def _parse_level(level_tokens):
+    """
+    Interpret the part of a phrase after the selector.
+    Returns a (kind, value) tuple or None if nothing usable was found:
+      ("named",  "full"|"out"|"home"|"min"|"max")
+      ("level",  int 0..100)
+      ("rel",    int)   relative +N  (negative for down)
+      ("color",  (r,g,b))
+      ("cp",     int)   color palette number
+      ("ip"/"fp"/"bp", int)   intensity/focus/beam palette number
+    """
+    lv = " ".join(level_tokens)
+    if not lv:
+        return None
+    # palettes: "color palette 2", "cp 2", "focus palette 3", "fp 3", etc.
+    m = re.search(r"\b(?:colou?r[ _]?palette|cp)\s*(\d+)", lv)
+    if m:
+        return ("cp", int(m.group(1)))
+    m = re.search(r"\b(?:intensity[ _]?palette|ip)\s*(\d+)", lv)
+    if m:
+        return ("ip", int(m.group(1)))
+    m = re.search(r"\b(?:focus[ _]?palette|fp)\s*(\d+)", lv)
+    if m:
+        return ("fp", int(m.group(1)))
+    m = re.search(r"\b(?:beam[ _]?palette|bp)\s*(\d+)", lv)
+    if m:
+        return ("bp", int(m.group(1)))
+    # moving-light parameter: "pan 50", "tilt -20", "zoom 75", "red 100" ...
+    m = _PARAM_RX.search(lv)
+    if m:
+        return ("param", (_PARAMS[m.group(1)], float(m.group(2))))
+    if "full" in lv:
+        return ("named", "full")
+    if re.search(r"\b(out|off|zero)\b", lv):
+        return ("named", "out")
+    if "home" in lv:
+        return ("named", "home")
+    if re.search(r"\bhalf\b", lv):
+        return ("level", 50)
+    if re.search(r"\b(minimum|min)\b", lv):
+        return ("named", "min")
+    if re.search(r"\b(maximum|max)\b", lv):
+        return ("named", "max")
+    for name, rgb in _COLORS.items():
+        if re.search(rf"\b{name}\b", lv):
+            return ("color", rgb)
+    if re.search(r"\b(up|raise|increase)\b", lv):
+        n = _first_int(level_tokens)
+        return ("rel", n if n is not None else 10)
+    if re.search(r"\b(down|lower|decrease)\b", lv):
+        n = _first_int(level_tokens)
+        return ("rel", -(n if n is not None else 10))
+    n = _first_int(level_tokens)
+    if n is not None:
+        return ("level", _clamp(n, 0, 100))
+    return None
+
+
+def _selector_and_rest(tokens):
+    """
+    From tokens after the target keyword, pull the selector.
+    Returns (selector_dict, rest_tokens) or (None, _) if no leading number.
+      selector_dict = {"kind": "single"|"range"|"list", "nums": [...]}
+    """
+    if not tokens or not re.fullmatch(r"\d+", tokens[0]):
+        return None, tokens
+    nums = [int(tokens[0])]
+    i = 1
+    kind = "single"
+    while i < len(tokens):
+        conn = tokens[i]
+        if conn in _RANGE_WORDS and i + 1 < len(tokens) and re.fullmatch(r"\d+", tokens[i + 1]):
+            kind = "range"
+            nums.append(int(tokens[i + 1]))
+            i += 2
+            break  # a range is exactly two endpoints
+        elif conn in _LIST_WORDS and i + 1 < len(tokens) and re.fullmatch(r"\d+", tokens[i + 1]):
+            kind = "list"
+            nums.append(int(tokens[i + 1]))
+            i += 2
+        else:
+            break
+    return {"kind": kind, "nums": nums}, tokens[i:]
+
+
+# --------------------------------------------------------------------------- #
+# OSC builders                                                                 #
+# --------------------------------------------------------------------------- #
+
+def _named_pct(level):
+    return {"full": 100, "out": 0, "home": None, "min": None, "max": None}.get(level)
+
+
+def _build_single(path, kw, n, level, label):
+    """Build OSC for a single channel/group/sub/address target."""
+    kind, val = level
+    pretty_n = n
+
+    if path == "sub":
+        # submasters use 0.0..1.0
+        if kind == "named" and val in ("full", "out"):
+            return [(f"/eos/sub/{n}/{val}", [])], f"{label} {pretty_n} {val}"
+        if kind == "level":
+            return [(f"/eos/sub/{n}", [float(val) / 100.0])], f"{label} {pretty_n} to {val} percent"
+        if kind == "rel":
+            sign = "+" if val >= 0 else "-"
+            return ([("/eos/cmd", [f"Sub {n} At {sign}{abs(val)}#"])],
+                    f"{label} {pretty_n} {('up' if val>=0 else 'down')} {abs(val)}")
+        return None, f"Submasters don't support that"
+
+    # chan / group / addr (0..100)
+    if kind == "named":
+        return [(f"/eos/{path}/{n}/{val}", [])], f"{label} {pretty_n} {val}"
+    if kind == "level":
+        return [(f"/eos/{path}/{n}", [float(val)])], f"{label} {pretty_n} to {val} percent"
+    if kind == "rel":
+        sign = "+" if val >= 0 else "-"
+        return ([("/eos/cmd", [f"{kw} {n} At {sign}{abs(val)}#"])],
+                f"{label} {pretty_n} {('up' if val>=0 else 'down')} {abs(val)}")
+    if kind == "color":
+        # Channels expose an explicit color/rgb address (Eos gamut-maps it).
+        # Groups do NOT (they only have /param/...), so use the command line.
+        if path == "chan":
+            r, g, b = val
+            return ([(f"/eos/chan/{n}/color/rgb", [float(r), float(g), float(b)])],
+                    f"{label} {pretty_n} color set")
+        if path == "group":
+            R, G, B = (int(round(x * 100)) for x in val)
+            return ([("/eos/cmd", [f"Group {n} Red {R} Green {G} Blue {B}#"])],
+                    f"{label} {pretty_n} color set")
+        return None, "Color is only available on channels and groups"
+    if kind in ("cp", "ip", "fp", "bp"):
+        if path not in ("chan", "group"):
+            return None, "Palettes apply to channels or groups"
+        pal = {"cp": "Color_Palette", "ip": "Intensity_Palette",
+               "fp": "Focus_Palette", "bp": "Beam_Palette"}[kind]
+        pretty = {"cp": "color", "ip": "intensity", "fp": "focus", "bp": "beam"}[kind]
+        return ([("/eos/cmd", [f"{kw} {n} {pal} {val}#"])],
+                f"{label} {pretty_n} {pretty} palette {val}")
+    if kind == "param":
+        pname, pval = val
+        if path not in ("chan", "group"):
+            return None, "Parameters apply to channels or groups"
+        return ([(f"/eos/{path}/{n}/param/{pname}", [float(pval)])],
+                f"{label} {pretty_n} {pname} {pval:g}")
+    return None, "Unrecognized level"
+
+
+def _build_multi(kw, sel, level, label):
+    """Build a single /eos/cmd command-line string for ranges and lists."""
+    nums = sel["nums"]
+    if sel["kind"] == "range":
+        sel_str = f"{nums[0]} Thru {nums[1]}"
+        sel_pretty = f"{nums[0]} through {nums[1]}"
+    else:  # list
+        sel_str = " + ".join(str(x) for x in nums)
+        sel_pretty = " and ".join(str(x) for x in nums)
+
+    kind, val = level
+    if kind == "named":
+        if val in ("full", "out", "home", "min", "max"):
+            return ([("/eos/cmd", [f"{kw} {sel_str} At {val.capitalize()}#"])],
+                    f"{label}s {sel_pretty} {val}")
+        return None, "Unsupported level for a range"
+    if kind == "level":
+        return ([("/eos/cmd", [f"{kw} {sel_str} At {val}#"])],
+                f"{label}s {sel_pretty} at {val} percent")
+    if kind == "rel":
+        sign = "+" if val >= 0 else "-"
+        return ([("/eos/cmd", [f"{kw} {sel_str} At {sign}{abs(val)}#"])],
+                f"{label}s {sel_pretty} {'up' if val>=0 else 'down'} {abs(val)}")
+    if kind == "color":
+        R, G, B = (int(round(x * 100)) for x in val)
+        return ([("/eos/cmd", [f"{kw} {sel_str} Red {R} Green {G} Blue {B}#"])],
+                f"{label}s {sel_pretty} color set")
+    if kind in ("cp", "ip", "fp", "bp"):
+        pal = {"cp": "Color_Palette", "ip": "Intensity_Palette",
+               "fp": "Focus_Palette", "bp": "Beam_Palette"}[kind]
+        pretty = {"cp": "color", "ip": "intensity", "fp": "focus", "bp": "beam"}[kind]
+        return ([("/eos/cmd", [f"{kw} {sel_str} {pal} {val}#"])],
+                f"{label}s {sel_pretty} {pretty} palette {val}")
+    if kind == "param":
+        pname, pval = val
+        return ([("/eos/cmd", [f"{kw} {sel_str} {pname.capitalize()} {pval:g}#"])],
+                f"{label}s {sel_pretty} {pname} {pval:g}")
+    return None, "Unsupported for a range"
+
+
+# --------------------------------------------------------------------------- #
+# Top-level parse                                                              #
+# --------------------------------------------------------------------------- #
+
+def parse(phrase: str, config: dict) -> ParseResult:
+    raw = (phrase or "").strip()
+    if not raw:
+        return ParseResult(False, "I didn't catch a command.")
+
+    # normalize: lowercase, strip punctuation, spell-out numbers, "X point Y" -> X.Y
+    text = raw.lower().strip()
+    text = re.sub(r"[.,!?;:]+$", "", text)
+    text = normalize_numbers(text)
+    text = re.sub(r"(\d)\s+point\s+(\d)", r"\1.\2", text)
+    # Siri often transcribes "cue" as "queue"/"que"/"q"
+    text = re.sub(r"\b(?:queue|que|q)\b", "cue", text)
+    text = re.sub(r"\s+", " ", text).strip()
+
+    macro_map = {k.lower(): v for k, v in (config.get("macro_map") or {}).items()}
+    key_map = {**_DEFAULT_KEYS, **(config.get("key_map") or {})}
+
+    # 1) user-defined named macros (blackout, restore, preshow, ...)
+    for name, num in macro_map.items():
+        if text == name or text.startswith(name + " ") or text.endswith(" " + name):
+            return ParseResult(True, name.capitalize(),
+                               [(f"/eos/macro/{num}/fire", [1.0])])
+
+    # 2) connectivity test
+    if text in ("ping", "test", "are you there"):
+        return ParseResult(True, "Pong — relay is connected.",
+                           [("/eos/ping", ["voice-relay"])])
+
+    # 2b) RAW COMMAND-LINE PASSTHROUGH — say "command ..." / "console ..." / "raw ..."
+    #     and the rest is translated straight into an Eos command line. This reaches
+    #     ANY command the console has. (Destructive verbs are gated by the relay's
+    #     destructive_policy.)
+    m = re.fullmatch(r"(?:command|console|raw)\s+(.+)", text)
+    if m:
+        cmd = _spoken_to_cmd(m.group(1))
+        return ParseResult(True, f"Command: {cmd.rstrip('#')}", [("/eos/cmd", [cmd])])
+
+    # 3) playback transport
+    if text in ("go", "go cue", "press go"):
+        key = key_map["go"]
+        return ParseResult(True, "Go",
+                           [(f"/eos/key/{key}", [1.0]), (f"/eos/key/{key}", [0.0])])
+    if re.fullmatch(r"(stop|back|stop back|hold|pause)", text):
+        key = key_map["stop_back"]
+        return ParseResult(True, "Stop/Back",
+                           [(f"/eos/key/{key}", [1.0]), (f"/eos/key/{key}", [0.0])])
+
+    # 3b) PRESS ANY KEY — "press live", "press blind", "press highlight", "press clear"
+    m = re.fullmatch(r"(?:press|key|hit|push) (.+)", text)
+    if m:
+        spoken_key = m.group(1).strip()
+        key = spoken_key.replace(" ", "_")
+        return ParseResult(True, f"Press {spoken_key}",
+                           [(f"/eos/key/{key}", [1.0]), (f"/eos/key/{key}", [0.0])])
+
+    # 4a) GO TO CUE — jump to a cue with its recorded timing (Eos "Go_To_Cue").
+    #     "go to cue 10", "goto cue 10.5", "jump to cue 3", "load cue 7"
+    #     optional list: "go to cue 10 in list 2"
+    m = re.fullmatch(
+        r"(?:go ?to|goto|jump to|load) cue ([\d.]+)"
+        r"(?: (?:in |on )?(?:list|cuelist) (\d+))?", text)
+    if m:
+        cue, lst = m.group(1), m.group(2)
+        target = f"{lst}/{cue}" if lst else cue
+        pretty = f"{cue} in list {lst}" if lst else cue
+        return ParseResult(True, f"Go to cue {pretty}",
+                           [("/eos/cmd", [f"Go_To_Cue {target}#"])])
+
+    # 4b) FIRE CUE — assert a cue immediately. "fire cue 10", "cue 10", "cue 5 in list 2"
+    m = re.fullmatch(r"(?:fire |run )?cue ([\d.]+) (?:in )?(?:list|cuelist) (\d+)", text)
+    if m:
+        cue, lst = m.group(1), m.group(2)
+        return ParseResult(True, f"Fired cue {cue} in list {lst}",
+                           [(f"/eos/cue/{lst}/{cue}/fire", [])])
+    m = re.fullmatch(r"(?:fire |run )?cue ([\d.]+)(?:\s+go)?", text)
+    if m:
+        cue = m.group(1)
+        return ParseResult(True, f"Fired cue {cue}",
+                           [(f"/eos/cue/{cue}/fire", [])])
+
+    # 4c) bare palette recall onto the CURRENT selection (no target named):
+    #     "color palette 2", "cp 2", "focus palette 3", "fp 3", ...
+    m = re.fullmatch(
+        r"(?:(colou?r|intensity|focus|beam)[ _]?palette|(cp|ip|fp|bp))\s*(\d+)", text)
+    if m:
+        kindword = m.group(1) or m.group(2)
+        num = m.group(3)
+        pal = {"color": "Color_Palette", "colour": "Color_Palette",
+               "intensity": "Intensity_Palette", "focus": "Focus_Palette",
+               "beam": "Beam_Palette", "cp": "Color_Palette",
+               "ip": "Intensity_Palette", "fp": "Focus_Palette",
+               "bp": "Beam_Palette"}[kindword]
+        return ParseResult(True, f"{pal.replace('_', ' ')} {num}",
+                           [("/eos/cmd", [f"{pal} {num}#"])])
+
+    # 5) fire macro / preset / palettes
+    m = re.fullmatch(r"(?:fire |run )?macro (\d+)", text)
+    if m:
+        return ParseResult(True, f"Fired macro {m.group(1)}",
+                           [(f"/eos/macro/{m.group(1)}/fire", [1.0])])
+    m = re.fullmatch(r"(?:fire |recall )?preset (\d+)", text)
+    if m:
+        return ParseResult(True, f"Recalled preset {m.group(1)}",
+                           [(f"/eos/preset/{m.group(1)}/fire", [1.0])])
+
+    # 6) bump a submaster ("bump sub 4")
+    m = re.fullmatch(r"bump (?:sub|submaster) (\d+)", text)
+    if m:
+        n = m.group(1)
+        return ParseResult(True, f"Bumped submaster {n}",
+                           [(f"/eos/sub/{n}/fire", [1.0]), (f"/eos/sub/{n}/fire", [0.0])])
+
+    # 7) target + selector + level  (channels / groups / subs / addresses)
+    for rx, (path, kw) in _TARGETS:
+        m = rx.search(text)
+        if not m:
+            continue
+        after = text[m.end():].strip().split()
+        sel, rest = _selector_and_rest(after)
+        if sel is None:
+            return ParseResult(False, f"I heard '{path}' but no number.")
+        level = _parse_level(rest)
+        if level is None:
+            return ParseResult(False,
+                               f"I heard '{' '.join([m.group(0)] + after)}' but no level.")
+        label = {"chan": "Channel", "group": "Group",
+                 "sub": "Submaster", "addr": "Address"}[path]
+        if sel["kind"] == "single":
+            msgs, conf = _build_single(path, kw, sel["nums"][0], level, label)
+        else:
+            msgs, conf = _build_multi(kw, sel, level, label)
+        if msgs is None:
+            return ParseResult(False, conf)
+        return ParseResult(True, conf, msgs)
+
+    return ParseResult(
+        False,
+        "Sorry, I didn't understand that. Try things like "
+        "'channel 5 at full', 'group 3 at 50 percent', or 'go'.",
+    )

@@ -1,0 +1,16 @@
+# Local config holds your token + console IP — never commit it
+relay/config.json
+
+# Logs
+*.log
+relay/*.log
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# leftover worktree dirs
+vigilant-noether-*/
