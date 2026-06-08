@@ -41,9 +41,11 @@ Action-style addresses (e.g. `.../full`) are sent **with no argument**.
   (execute). Supports `%1 %2` substitution with trailing args.
 - `/eos/newcmd "<text>"` — same, but clears the command line first.
 
-The relay uses `/eos/cmd` only for **ranges, lists, and relative levels**
-(e.g. `"Chan 1 Thru 8 At 75#"`). The relay **blocks** any `/eos/cmd` string
-containing destructive verbs (Record, Update, Delete, Wipe, Patch, Merge, …).
+The relay uses `/eos/cmd` for **ranges, lists, relative levels**, **action verbs**
+(Sneak, Mark, Rem_Dim, …), and as a **fallback** for any phrase that names a known
+Eos keyword but doesn't match a dedicated rule — which is what makes the *entire*
+Eos command set reachable by voice. The relay **blocks** any `/eos/cmd` string
+containing destructive verbs (Delete, Wipe, Patch, …) per the `destructive_policy`.
 
 ### Channels
 - `/eos/chan/<n> = <0–100>` — set intensity
@@ -86,6 +88,31 @@ containing destructive verbs (Record, Update, Delete, Wipe, Patch, Merge, …).
 - `/eos/ping "<anything>"` — connectivity test (the relay's "ping"/"test" verb)
 - `/eos/key/<keyname>` — any console hardkey
 - `/eos/user = <n>` — set the OSC user
+
+## What you can say (spoken vocabulary)
+
+The parser maps natural phrases to the addresses above. A non-exhaustive map of
+what's recognized — anything not listed still works via the **command-line
+fallback** (any phrase containing a known Eos word) or the explicit **`command …`**
+prefix:
+
+| You say | Eos result |
+|---|---|
+| `channel 5 at full` / `channel 5 sneak` | set / sneak channel 5 |
+| `channels 1 thru 8 at 75` | `Chan 1 Thru 8 At 75` |
+| `group 3 red` · `channel 7 color palette 2` | color / palette recall |
+| `gobo 3` · `pan 50` · `iris 20` | parameter on the current selection |
+| `full` · `out` · `home` · `at 50` · `75 percent` | level on the current selection |
+| `sneak` · `highlight` · `mark` · `park` · `rem dim` · `make manual` | action on the current selection |
+| `sneak channel 5` ( = `channel 5 sneak` ) | verb spoken before the target works too |
+| `go` · `stop` · `go to cue 10` · `fire cue 5` | playback |
+| `macro 5` · `preset 3` · `bump sub 4` | fire macro / preset / submaster |
+| `blackout` (your macro-mapped word) | fires the mapped console macro |
+| `command <anything>` | raw command-line passthrough |
+
+Action verbs and bare parameters are typed onto the Eos command line, so they act
+on whatever channels are **currently selected** on the console (just like typing
+them on the console's keypad).
 
 ## Notes / gotchas
 - **Key names** (`go_0`, `stop_back_main_cuelist`) can vary by console

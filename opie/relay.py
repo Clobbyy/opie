@@ -39,6 +39,7 @@ from urllib.parse import urlparse, parse_qs
 from . import config as opie_config
 from . import osclib
 from . import parser as nlparser
+from . import update as opie_update
 
 DEFAULT_CONFIG = {
     "NOMAD_IP": "127.0.0.1",      # Eos/Nomad lighting-network IP (use 127.0.0.1 for loopback test)
@@ -57,6 +58,9 @@ DEFAULT_CONFIG = {
     #   "record_update" - allow Record/Update/Store; block Delete/Wipe/Patch (default)
     #   "allow_all"     - true full control, including Delete/Wipe/Patch
     "destructive_policy": "record_update",
+    # Keep Opie current automatically by fast-forwarding the Git clone it runs
+    # from (no effect on pip installs or downloaded ZIPs). See opie/update.py.
+    "auto_update": True,
 }
 
 # Always blocked unless policy == "allow_all".
@@ -257,6 +261,16 @@ def main():
 
     if cfg.get("TOKEN") in ("", "CHANGE_ME"):
         log.warning("TOKEN is still the default — set a real secret in config.json")
+
+    # Self-update: if running from a Git clone and a newer commit is available,
+    # fast-forward and re-exec into it before we start serving. Best-effort and
+    # bounded; offline/no-git/not-a-clone just continues on the current code.
+    status = opie_update.self_update_and_reexec(cfg)  # may not return (re-execs)
+    if status == opie_update.ERROR:
+        log.warning("auto-update check could not complete; running current version")
+    elif status == opie_update.CURRENT and opie_update.is_git_clone():
+        log.info("auto-update: already on the latest version (%s)",
+                 opie_update.current_revision() or "unknown")
 
     relay = Relay(cfg)
     port = int(cfg["HTTP_PORT"])

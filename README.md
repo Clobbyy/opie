@@ -18,21 +18,38 @@ See [`docs/OSC_REFERENCE.md`](docs/OSC_REFERENCE.md).
 
 ## Install (easy path)
 
-1. Download/clone this repo onto the theatre **Mac**.
-2. Double-click **`install.command`**.
+1. Get this repo onto the theatre **Mac**. Two ways:
+   - **Clone with Git** *(recommended — enables automatic updates):*
+     ```bash
+     git clone https://github.com/Clobbyy/opie.git ~/Opie
+     ```
+   - **Or download the ZIP** from GitHub and unzip it somewhere permanent.
+2. Open the folder and double-click **`install.command`**.
    - First time from a download, macOS may say *"unidentified developer."* Right-click the
      file → **Open** → **Open**. (It just runs the visible shell script in this folder.)
 3. The **Opie Control** window opens. That's it.
 
-The installer runs entirely offline — **no internet, no pip, no virtualenv.** It uses
-the Mac's built-in Python 3 to run the app straight from this folder, creates your config
-(with a freshly generated security token) under `~/Library/Application Support/Opie/`, and
-drops an **`Opie Control.command`** launcher in this folder to re-open it any time.
+The installer runs offline — **no pip, no virtualenv.** It uses the Mac's built-in
+Python 3 to run the app straight from this folder, creates your config (with a freshly
+generated security token) under `~/Library/Application Support/Opie/`, and drops an
+**`Opie Control.command`** launcher in this folder to re-open it any time.
 
 > **Keep this folder where it is** after installing — the app runs from here. (Put it
 > somewhere permanent first, e.g. your Applications or home folder.)
 
-To remove everything later, double-click **`uninstall.command`**.
+### Updates are automatic
+
+If you cloned with Git, Opie **keeps itself current** — no reinstalling to get changes:
+
+- The relay fast-forwards to the latest code each time it starts (e.g. at login when
+  autostart is on).
+- The control panel checks on launch; there's also a **Check for updates** button and an
+  **Auto-update** toggle in the window. When an update lands it restarts the relay onto the
+  new code automatically.
+
+Downloaded-ZIP and `pip` installs don't auto-update (the window just says so) — re-run
+`install.command` after pulling, or `pip install -U`, to update those. To remove everything
+later, double-click **`uninstall.command`**.
 
 > Requires **Python 3** on the Mac. The control panel needs **Tk ≥ 8.6**, but Apple's
 > built-in `/usr/bin/python3` ships the deprecated **Tk 8.5**, which crashes on recent
@@ -61,13 +78,33 @@ One window, four sections:
   (with **Generate** / **Copy**). Edit the **macro map** (spoken word → console macro #)
   and **key map** (spoken word → console key). **Save** or **Save & Restart**.
 - **Control bar** — **Start / Stop / Restart**, plus **Autostart at login** (installs a
-  launchd agent so the relay runs whenever the Mac boots). A status dot shows
-  running/stopped and the listening URL.
+  launchd agent so the relay runs whenever the Mac boots) and **Auto-update** (keep the
+  Git clone current). A status dot shows running/stopped and the listening URL.
 - **Logs** — live tail of the relay log, with Pause / Clear / Reveal in Finder.
 - **Test & Help** — send a phrase straight to the relay and hear the spoken reply, check
   whether the console IP is reachable, and grab the **iPhone Shortcut** URL + token.
 
 ---
+
+## What you can say
+
+Opie understands natural phrases and, as a fallback, **any command the console
+itself understands** — so the full Eos vocabulary is reachable by voice:
+
+- **Set levels** — "channel 5 at full", "channels 1 through 8 at 75",
+  "group 3 at half", "submaster 2 to 80 percent", "address 513 at 100".
+- **Current selection** — "full", "out", "home", "at 50", "75 percent".
+- **Actions** — "sneak", "highlight", "mark", "park", "unpark", "rem dim",
+  "make manual", "assert", "capture" (alone = current selection; or
+  "channel 5 sneak" / "sneak channel 5").
+- **Parameters** — "gobo 3", "pan 50", "tilt -20", "zoom 75", "iris 20", "hue 180".
+- **Color** — "make channel 7 red", "group 3 blue", "channel 9 color palette 2".
+- **Playback** — "go", "stop", "go to cue 10", "fire cue 5", "macro 5", "preset 3".
+- **Your scene words** — map a spoken word to a console macro (e.g. "blackout").
+- **Anything else** — prefix with "command …" to type it straight onto the Eos
+  command line (e.g. "command chan 1 thru 10 effect 3").
+
+See [`docs/OSC_REFERENCE.md`](docs/OSC_REFERENCE.md) for the full vocabulary table.
 
 ## Console + phone setup
 
