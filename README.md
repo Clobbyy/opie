@@ -24,14 +24,20 @@ See [`docs/OSC_REFERENCE.md`](docs/OSC_REFERENCE.md).
      file → **Open** → **Open**. (It just runs the visible shell script in this folder.)
 3. The **Opie Control** window opens. That's it.
 
-The installer creates a private Python environment and your config (with a freshly
-generated security token) under `~/Library/Application Support/Opie/`. Launch any time
-afterward with the **`Opie Control.command`** that appears in this folder.
+The installer runs entirely offline — **no internet, no pip, no virtualenv.** It uses
+the Mac's built-in Python 3 to run the app straight from this folder, creates your config
+(with a freshly generated security token) under `~/Library/Application Support/Opie/`, and
+drops an **`Opie Control.command`** launcher in this folder to re-open it any time.
+
+> **Keep this folder where it is** after installing — the app runs from here. (Put it
+> somewhere permanent first, e.g. your Applications or home folder.)
 
 To remove everything later, double-click **`uninstall.command`**.
 
 > Requires **Python 3** on the Mac (`python3 --version`; if missing, run
-> `xcode-select --install`). Everything else is Python standard library — no pip packages.
+> `xcode-select --install`). Everything else is Python standard library — no packages to
+> download. If your `python3` can't open a window, install Python 3 from
+> [python.org](https://www.python.org/downloads/macos/) (it includes Tk).
 
 ### Install for developers (pip, from the private repo)
 
@@ -41,7 +47,7 @@ pip install "git+ssh://git@github.com/Clobbyy/opie.git"     # SSH (recommended)
 pip install "git+https://github.com/Clobbyy/opie.git"
 ```
 
-Gives you the `opie`, `opie-gui`, and `opie-sniff` commands.
+Gives you the `opie`, `opie-gui`, and `opie-sniff` commands. (This path needs internet.)
 
 ---
 
@@ -86,7 +92,7 @@ Use **Test & Help → Phone setup info** for the exact URL + token, then follow
 ## Test offline (no console, no risk)
 
 ```bash
-opie-sniff 8000        # terminal A: prints the OSC the relay would send
+python3 -m opie.sniffer 8000     # terminal A: prints the OSC the relay would send
 # In the GUI set Console IP = 127.0.0.1, Start, then use the Test box:
 #   "channel 5 at full"  ->  sniffer prints  /eos/chan/5/full
 ```
@@ -97,16 +103,22 @@ Run the unit tests (no hardware):
 python3 tests/test_parser.py
 ```
 
+> If you pip-installed, the same commands are available as `opie-sniff`, `opie`, etc.
+
 ---
 
 ## Command line (optional)
 
+From the project folder (the offline / no-pip way):
+
 ```bash
-opie                       # run the relay (reads the default config)
-opie --config /path.json   # custom config
-opie-gui                   # the control panel
-opie-sniff [port]          # loopback OSC sniffer
+python3 -m opie                    # run the relay (reads the default config)
+python3 -m opie --config /p.json   # custom config
+python3 -m opie.gui                # the control panel
+python3 -m opie.sniffer [port]     # loopback OSC sniffer
 ```
+
+After a `pip install`, the same things are the commands `opie`, `opie-gui`, `opie-sniff`.
 
 Config lives at `~/Library/Application Support/Opie/config.json`; logs at
 `~/Library/Logs/Opie/`. Override the config path with the `OPIE_CONFIG` env var.

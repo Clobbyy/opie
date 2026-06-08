@@ -40,6 +40,29 @@ def example_config_path() -> str:
                         "resources", "config.example.json")
 
 
+def install_root_file() -> str:
+    return os.path.join(app_support_dir(), "install_root")
+
+
+def set_install_root(path: str) -> str:
+    """Record where the source tree lives so the relay can be launched from any
+    working directory (used by the no-pip installer for autostart + manual start)."""
+    os.makedirs(app_support_dir(), exist_ok=True)
+    root = os.path.abspath(path)
+    with open(install_root_file(), "w", encoding="utf-8") as f:
+        f.write(root)
+    return root
+
+
+def get_install_root():
+    """Return the recorded source-tree path, or None if Opie was pip-installed."""
+    try:
+        with open(install_root_file(), "r", encoding="utf-8") as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
+
+
 def generate_token() -> str:
     """A strong, URL-safe shared secret (the iPhone Shortcut sends the same value)."""
     return secrets.token_urlsafe(32)

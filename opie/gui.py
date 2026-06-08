@@ -290,10 +290,16 @@ class OpieGUI:
             os.makedirs(os.path.dirname(log), exist_ok=True)
         except OSError:
             pass
+        # When running from source (no pip install), point the child at the tree.
+        env = dict(os.environ)
+        root = opie_config.get_install_root()
+        if root:
+            existing = env.get("PYTHONPATH", "")
+            env["PYTHONPATH"] = root + (os.pathsep + existing if existing else "")
         self.proc = subprocess.Popen(
             [sys.executable, "-m", "opie", "--config", self.config_path],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            cwd=opie_config.app_support_dir())
+            cwd=root or opie_config.app_support_dir(), env=env)
 
     def _kill_proc(self):
         if self.proc and self.proc.poll() is None:

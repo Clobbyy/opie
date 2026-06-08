@@ -30,14 +30,28 @@ def _uid() -> int:
 
 
 def render(python_exe=None, config_path=None, stdout_log=None, stderr_log=None,
-           workdir=None) -> str:
-    """Fill the plist template with concrete paths."""
+           workdir=None, pythonpath=None) -> str:
+    """Fill the plist template with concrete paths.
+
+    When Opie runs from source (no pip install), `pythonpath` points launchd at
+    the source tree so `python3 -m opie` resolves. Defaults to the recorded
+    install root; None (pip install) omits the env block entirely.
+    """
     python_exe = python_exe or sys.executable
     config_path = config_path or opie_config.default_config_path()
     logs = opie_config.logs_dir()
     stdout_log = stdout_log or os.path.join(logs, "relay.out.log")
     stderr_log = stderr_log or os.path.join(logs, "relay.err.log")
     workdir = workdir or opie_config.app_support_dir()
+    if pythonpath is None:
+        pythonpath = opie_config.get_install_root()
+    env_block = ""
+    if pythonpath:
+        env_block = ("    <key>EnvironmentVariables</key>\n"
+                     "    <dict>\n"
+                     "        <key>PYTHONPATH</key>\n"
+                     f"        <string>{pythonpath}</string>\n"
+                     "    </dict>\n")
     with open(_template_path(), "r", encoding="utf-8") as f:
         tmpl = f.read()
     subs = {
@@ -47,6 +61,7 @@ def render(python_exe=None, config_path=None, stdout_log=None, stderr_log=None,
         "STDOUT": stdout_log,
         "STDERR": stderr_log,
         "WORKDIR": workdir,
+        "ENV_BLOCK": env_block,
     }
     for k, v in subs.items():
         tmpl = tmpl.replace("{{" + k + "}}", v)
