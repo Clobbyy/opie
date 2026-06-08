@@ -49,8 +49,15 @@ git tag v0.2.0 && git push origin v0.2.0
 ## Signing & notarization (optional, removes the Gatekeeper prompt)
 
 The installers are **unsigned**, so the first open needs right-click → **Open**
-(or System Settings → Privacy & Security → **Open Anyway**). To ship a one-click
-experience you need an Apple Developer ID:
+(or System Settings → Privacy & Security → **Open Anyway**).
+
+> **No Apple Developer ID?** You don't need one. The clone-based **one-paste
+> install** (`bootstrap.sh`, see the top-level README) avoids Gatekeeper entirely
+> — files fetched by `git`/`curl` aren't quarantined, so nothing is ever blocked —
+> and it auto-updates. Prefer that over the `.pkg`/`.dmg` for non-technical users
+> until you're ready to sign.
+
+To ship a one-click signed `.pkg`/`.dmg` you need an Apple Developer ID:
 
 ```bash
 # sign the app, then the installer, then notarize + staple

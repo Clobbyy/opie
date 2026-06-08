@@ -18,45 +18,57 @@ See [`docs/OSC_REFERENCE.md`](docs/OSC_REFERENCE.md).
 
 ## Install
 
-### Easiest: download the macOS installer
+### Recommended: one-paste install (no Apple Developer ID, no Gatekeeper prompt)
 
-1. Grab the latest **`Opie-<version>.pkg`** (or **`.dmg`**) from the
-   [**Releases**](https://github.com/Clobbyy/opie/releases) page.
-2. **`.pkg`** — double-click → click through the installer → **Opie** lands in your
-   **Applications** folder.
-   **`.dmg`** — double-click → drag **Opie** onto **Applications**.
-3. Open **Opie** from Applications. First launch creates your settings (with a freshly
-   generated security token) automatically — then set your Console IP and token.
+Open **Terminal** (Spotlight → "Terminal") and paste **one** line:
 
-> First open, macOS may say *"unidentified developer"* (the app isn't notarized yet):
-> right-click **Opie** → **Open** → **Open**, or System Settings → Privacy & Security →
-> **Open Anyway**. You only do this once.
->
-> The control panel needs **Python 3 with Tk ≥ 8.6**. Apple's built-in `/usr/bin/python3`
-> ships the deprecated **Tk 8.5**, so if that's all you have, Opie pops a dialog with a
-> one-click link to [python.org](https://www.python.org/downloads/macos/) (whose Python
-> includes Tk 8.6). The relay itself runs headless on any Python 3.
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Clobbyy/opie/main/bootstrap.sh)"
+```
+
+That's it — it downloads Opie, runs the installer, and opens the control panel. First
+launch creates your settings (with a freshly generated security token); then set your
+Console IP and token.
+
+**Why this is the best route without a paid Apple Developer ID:** macOS's *"unidentified
+developer"* prompt only appears on files carrying the **quarantine** flag, which browsers
+and Mail stamp on downloads — but `git`/`curl` **don't**. So a clone-based install never
+trips Gatekeeper at all, and as a bonus it **auto-updates** (see below). No right-click
+dance, no "Open Anyway."
+
+Prefer not to use Terminal? Two equivalents:
+- **GitHub Desktop** → *Clone repository* → `Clobbyy/opie`, then double-click
+  **`install.command`** in the cloned folder (no prompt — cloned files aren't quarantined).
+- Or clone manually and run the installer:
+  ```bash
+  git clone https://github.com/Clobbyy/opie.git ~/Applications/Opie
+  bash ~/Applications/Opie/install.command
+  ```
+
+The installer runs offline — **no pip, no virtualenv** — using the Mac's Python 3 straight
+from the folder, creates your config, and drops an **`Opie Control.command`** launcher.
+
+**Updates are automatic on this path:** the relay fast-forwards to the latest code each
+time it starts (e.g. at login with autostart on), and the control panel has a **Check for
+updates** button and an **Auto-update** toggle. Re-paste the one-liner any time to update by
+hand. To remove everything later, double-click **`uninstall.command`**.
+
+> Requires **Python 3 with Tk ≥ 8.6**. Apple's built-in `/usr/bin/python3` ships the
+> deprecated **Tk 8.5**, so if that's all you have, Opie pops a dialog with a one-click link
+> to [python.org](https://www.python.org/downloads/macos/) (whose Python includes Tk 8.6).
+> The relay itself runs headless on any Python 3.
+
+### Or: the macOS installer (.pkg / .dmg)
+
+A familiar double-click installer, at the cost of a **one-time** Gatekeeper bypass (it's
+unsigned). Grab the latest **`Opie-<version>.pkg`** or **`.dmg`** from the
+[**Releases**](https://github.com/Clobbyy/opie/releases) page → install (pkg: click through;
+dmg: drag **Opie** to **Applications**) → first open, right-click **Opie** → **Open** →
+**Open** (or System Settings → Privacy & Security → **Open Anyway**). Update by installing a
+newer build (the app's "Check for updates" opens the Releases page).
 
 *(Maintainers: the installers are built by `packaging/build_all.sh` on a Mac, or
 automatically by CI — see [`packaging/README.md`](packaging/README.md).)*
-
-### Alternative: clone with Git (adds automatic updates)
-
-```bash
-git clone https://github.com/Clobbyy/opie.git ~/Opie
-```
-
-Then double-click **`install.command`** in the folder (right-click → **Open** the first
-time). It runs offline — **no pip, no virtualenv** — using the Mac's Python 3 straight from
-the folder, creates your config, and drops an **`Opie Control.command`** launcher.
-
-**Updates are automatic on this path:** the relay fast-forwards to the latest code each
-time it starts (e.g. at login with autostart on), and the control panel checks on launch
-with a **Check for updates** button and an **Auto-update** toggle. A downloaded `.pkg`/`.dmg`
-updates by installing a newer one (its "Check for updates" opens the Releases page).
-
-> **Keep this folder where it is** after installing — the app runs from here. To remove
-> everything later, double-click **`uninstall.command`**.
 
 ### Install for developers (pip, from the private repo)
 
@@ -208,6 +220,7 @@ packaging/            build Opie.app + .pkg/.dmg macOS installers
 tests/test_parser.py  offline tests (no hardware)
 docs/OSC_REFERENCE.md the Eos OSC commands + console setup
 shortcuts/SHORTCUT_SETUP.md  build the iPhone Shortcut
+bootstrap.sh          one-paste curl|bash installer (clone + run, no Gatekeeper)
 install.command / uninstall.command   double-click installers (clone path)
 .github/workflows/    CI tests + macOS installer builds
 ```

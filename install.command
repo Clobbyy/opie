@@ -21,6 +21,12 @@ echo "======================================================"
 echo "Folder: $DIR"
 echo
 
+# 0. If this folder was downloaded (zip/email/AirDrop) it carries macOS's
+#    "quarantine" flag, which is what triggers the "unidentified developer"
+#    prompts. Strip it so the launcher and app we run from here open cleanly.
+#    (Folders obtained with `git clone` are never quarantined to begin with.)
+xattr -dr com.apple.quarantine "$DIR" >/dev/null 2>&1 || true
+
 # 1. Need *some* python3 just to run the checks (Command Line Tools is fine here).
 if ! command -v python3 >/dev/null 2>&1 || ! python3 --version >/dev/null 2>&1; then
   echo "Python 3 isn't ready yet. In Terminal run:"
