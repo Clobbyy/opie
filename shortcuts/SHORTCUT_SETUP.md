@@ -7,9 +7,10 @@ Lighting Control."**
 You need two values from the Mac:
 - **Relay address:** `http://<mac-tailscale-name>:8765` (your Mac's MagicDNS name,
   e.g. `http://theatre-mac:8765`, or its `100.x.y.z` Tailscale IP). See README.
-- **Token:** the `TOKEN` value in `relay/config.json` — copy it from there and
-  paste it as the `X-Token` value below. (It's kept out of git on purpose;
-  generate one with `python3 -c "import secrets; print(secrets.token_urlsafe(32))"`.)
+- **Token:** your shared secret. The easiest way to get both values is the GUI:
+  **Opie Control → Test & Help → Phone setup info** shows the exact URL and token
+  with copy buttons. (The token is also in your config at
+  `~/Library/Application Support/Opie/config.json`, kept out of git on purpose.)
 
 ---
 
@@ -31,7 +32,7 @@ Control** (this is the Siri trigger phrase). Add these actions in order:
    - Tap **Show More**:
      - **Method:** `POST`
      - **Headers:** add one →
-       - Key: `X-Token`   Value: `YOUR_TOKEN` (paste it from relay/config.json)
+       - Key: `X-Token`   Value: `YOUR_TOKEN` (from Phone setup info / your config)
        - (optional) Key: `Content-Type`  Value: `text/plain`
      - **Request Body:** `File` →  set it to **Text**, then select the
        **Dictated Text** variable from step 1 as the body content.
@@ -62,9 +63,9 @@ idea but skip dictation:
 
 1. **Text** → `http://<mac-tailscale-name>:8765/command`
 2. **Get Contents of URL** → `POST`, header
-   `X-Token: YOUR_TOKEN` (from relay/config.json), **Request Body:
-   Text** = the literal phrase, e.g. `blackout` (must match a key in
-   `config.json → macro_map`) or any phrase like `channels 1 thru 200 at full`.
+   `X-Token: YOUR_TOKEN`, **Request Body:
+   Text** = the literal phrase, e.g. `blackout` (must match a key in your
+   **macro map**) or any phrase like `channels 1 thru 200 at full`.
 3. **Speak Text** ← Contents of URL (optional).
 
 Name each one for its Siri phrase: **"Blackout"**, **"House Lights Up"**,

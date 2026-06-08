@@ -14,8 +14,8 @@ docs (links at the bottom). Eos = the software family that **Nomad** runs.
    - `{OSC UDP RX Port}` = **8000**  ← the relay SENDS here
    - `{OSC TX}` / `{OSC UDP TX Port}` = 8001 (only needed if you later want
      feedback from the console; this project doesn't require it)
-3. Note the Nomad computer's **lighting-network IP** — that's `NOMAD_IP` in
-   `relay/config.json`. Make sure the Mac can `ping` it.
+3. Note the Nomad computer's **lighting-network IP** — that's the **Console IP**
+   in Opie Control (the `NOMAD_IP` config value). Make sure the Mac can `ping` it.
 
 > Ports are arbitrary but must match between the relay and Eos. ETC recommends
 > 8000/8001. TCP (3032/3037) is also possible but this project uses UDP.

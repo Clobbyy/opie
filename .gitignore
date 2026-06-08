@@ -1,13 +1,23 @@
-# Local config holds your token + console IP — never commit it
+# Local config holds your token + console IP — never commit it.
+# (The live config lives in ~/Library/Application Support/Opie/, outside the repo.)
+config.json
+*.local.json
 relay/config.json
 
 # Logs
 *.log
-relay/*.log
 
-# Python
+# Python / packaging
 __pycache__/
 *.pyc
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Virtualenvs
+venv/
+.venv/
 
 # macOS
 .DS_Store
