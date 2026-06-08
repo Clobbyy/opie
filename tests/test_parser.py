@@ -93,6 +93,34 @@ OK_CASES = [
     ("command channel 5 thru 10 at full", [("/eos/cmd", ["Chan 5 Thru 10 At Full#"])]),
     ("console go to cue 3",          [("/eos/cmd", ["Go_To_Cue 3#"])]),
     ("command record cue 5",         [("/eos/cmd", ["Record Cue 5#"])]),
+    # bare action verbs on the current selection (no "command" prefix needed)
+    ("sneak",                        [("/eos/cmd", ["Sneak#"])]),
+    ("highlight",                    [("/eos/cmd", ["Highlight#"])]),
+    ("mark",                         [("/eos/cmd", ["Mark#"])]),
+    ("rem dim",                      [("/eos/cmd", ["Rem_Dim#"])]),
+    ("make manual",                  [("/eos/cmd", ["Make_Manual#"])]),
+    # bare parameters on the current selection
+    ("gobo 3",                       [("/eos/cmd", ["Gobo 3#"])]),
+    ("pan 50",                       [("/eos/cmd", ["Pan 50#"])]),
+    ("iris 20",                      [("/eos/cmd", ["Iris 20#"])]),
+    # bare levels on the current selection
+    ("full",                         [("/eos/at/full", [])]),
+    ("out",                          [("/eos/at/out", [])]),
+    ("at 50 percent",                [("/eos/at", [50.0])]),
+    ("75 percent",                   [("/eos/at", [75.0])]),
+    # action verbs attached to a target (natural target-first order)
+    ("channel 5 sneak",              [("/eos/cmd", ["Chan 5 Sneak#"])]),
+    ("group 2 mark",                 [("/eos/cmd", ["Group 2 Mark#"])]),
+    ("groups 1 thru 4 rem dim",      [("/eos/cmd", ["Group 1 Thru 4 Rem_Dim#"])]),
+    ("channel 5 home",               [("/eos/chan/5/home", [])]),
+    # verb spoken BEFORE the target ("sneak channel 5" == "channel 5 sneak")
+    ("sneak channel 5",              [("/eos/cmd", ["Chan 5 Sneak#"])]),
+    ("park channel 5",               [("/eos/cmd", ["Chan 5 Park#"])]),
+    ("home channel 5",               [("/eos/chan/5/home", [])]),
+    ("blue channel 7",               [("/eos/chan/7/color/rgb", [0.0, 0.0, 1.0])]),
+    # general fallback: any phrase with an Eos keyword reaches the command line
+    ("effect 3",                     [("/eos/cmd", ["Effect 3#"])]),
+    ("snapshot 2",                   [("/eos/cmd", ["Snapshot 2#"])]),
 ]
 
 # phrases that must NOT produce OSC (graceful failure with a spoken hint)

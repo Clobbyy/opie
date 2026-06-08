@@ -21,8 +21,10 @@ import urllib.request
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from . import __version__
 from . import config as opie_config
 from . import service
+from . import update as opie_update
 
 POLICIES = ["block_all", "record_update", "allow_all"]
 
@@ -52,6 +54,9 @@ class OpieGUI:
         self._apply_cfg_to_form()
         self._status_tick()
         self._poll_logs()
+        # quiet background update check shortly after the window is up
+        if self.cfg.get("auto_update", True):
+            self.root.after(1500, lambda: self.check_updates(manual=False))
 
     # ------------------------------------------------------------------ UI --
 
@@ -91,6 +96,10 @@ class OpieGUI:
         ttk.Checkbutton(bar, text="Autostart at login",
                         variable=self.autostart_var,
                         command=self.toggle_autostart).pack(side="right")
+        self.autoupdate_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(bar, text="Auto-update",
+                        variable=self.autoupdate_var,
+                        command=self._toggle_autoupdate).pack(side="right", padx=8)
 
     def _build_setup_tab(self, nb):
         tab = ttk.Frame(nb, padding=12)
@@ -188,6 +197,14 @@ class OpieGUI:
         ttk.Button(checks, text="Phone setup info",
                    command=self.phone_setup).pack(side="left")
 
+        # version + manual update
+        verrow = ttk.Frame(tab)
+        verrow.pack(fill="x", pady=(12, 0))
+        self.version_lbl = ttk.Label(verrow, text=self._version_text(), foreground="#555")
+        self.version_lbl.pack(side="left")
+        ttk.Button(verrow, text="Check for updates",
+                   command=lambda: self.check_updates(manual=True)).pack(side="right")
+
         help_txt = (
             "Tips\n"
             "•  Set the console IP + token, then Save & Restart.\n"
@@ -207,6 +224,7 @@ class OpieGUI:
             self.vars[key].set(str(self.cfg.get(key, "")))
         self.vars["destructive_policy"].set(
             self.cfg.get("destructive_policy", "record_update"))
+        self.autoupdate_var.set(bool(self.cfg.get("auto_update", True)))
         self.vars["TOKEN"].set(self.cfg.get("TOKEN", ""))
         self.macro_text.delete("1.0", "end")
         self.macro_text.insert("1.0", json.dumps(self.cfg.get("macro_map", {}), indent=2))
@@ -220,6 +238,7 @@ class OpieGUI:
         cfg["TOKEN"] = self.vars["TOKEN"].get().strip()
         cfg["LOG_FILE"] = self.vars["LOG_FILE"].get().strip()
         cfg["destructive_policy"] = self.vars["destructive_policy"].get().strip()
+        cfg["auto_update"] = bool(self.autoupdate_var.get())
         for key in ("EOS_RX_PORT", "HTTP_PORT"):
             raw = self.vars[key].get().strip()
             try:
@@ -528,6 +547,52 @@ class OpieGUI:
 
     def _open_config_folder(self):
         subprocess.run(["open", os.path.dirname(self.config_path)])
+
+    # ------------------------------------------------------------ updates --
+
+    def _version_text(self):
+        rev = opie_update.current_revision()
+        return f"Opie {__version__}" + (f"  ·  {rev}" if rev else "")
+
+    def _toggle_autoupdate(self):
+        # persist the toggle immediately (no full Save needed)
+        self.cfg["auto_update"] = bool(self.autoupdate_var.get())
+        try:
+            opie_config.save(self.cfg, self.config_path)
+            self._flash("Auto-update " + ("on." if self.cfg["auto_update"] else "off."))
+        except OSError as e:
+            messagebox.showerror("Auto-update", str(e))
+
+    def check_updates(self, manual=True):
+        if manual:
+            self._flash("Checking for updates…")
+
+        def work():
+            status, msg = opie_update.check_and_update()
+            self.root.after(0, lambda: self._after_update_check(status, msg, manual))
+
+        threading.Thread(target=work, daemon=True).start()
+
+    def _after_update_check(self, status, msg, manual):
+        self.version_lbl.config(text=self._version_text())
+        if status == opie_update.UPDATED:
+            self._apply_restart()  # relay picks up the new code
+            self._flash("Updated — relay restarted.")
+            messagebox.showinfo(
+                "Opie updated",
+                f"{msg}\n\nThe relay is now running the latest code. Reopen Opie "
+                "Control to refresh this window.")
+        elif status == opie_update.CURRENT:
+            if manual:
+                messagebox.showinfo("Up to date", msg)
+            else:
+                self._flash("Up to date.")
+        elif status == opie_update.UNAVAILABLE:
+            if manual:
+                messagebox.showinfo("Updates", msg)
+        else:  # ERROR
+            if manual:
+                messagebox.showwarning("Update check", msg)
 
 
 PYTHON_ORG_URL = "https://www.python.org/downloads/macos/"

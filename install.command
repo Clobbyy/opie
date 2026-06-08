@@ -69,26 +69,43 @@ if [ -z "$PY" ]; then
 fi
 echo "✓  Using $("$PY" --version 2>&1)  ($PY)  — Tk OK"
 
-# 3. The opie package must import from this folder.
+# 3. If this folder is a Git clone, grab the latest code now (so re-running this
+#    installer also updates Opie). Best-effort: offline / non-clone just skips.
+if [ -d "$DIR/.git" ] && command -v git >/dev/null 2>&1; then
+  echo "Checking for the latest Opie…"
+  if git -C "$DIR" pull --ff-only --quiet 2>/dev/null; then
+    echo "✓  Up to date ($(git -C "$DIR" rev-parse --short HEAD 2>/dev/null))"
+    GIT_CLONE=1
+  else
+    echo "•  Couldn't auto-pull (offline or local changes) — using this copy."
+    GIT_CLONE=1
+  fi
+else
+  echo "•  Not a Git clone — automatic updates won't be available."
+  echo "   (Clone with Git instead of downloading a ZIP to get auto-updates.)"
+  GIT_CLONE=0
+fi
+
+# 4. The opie package must import from this folder.
 if ! PYTHONPATH="$DIR" "$PY" -c "import opie" >/dev/null 2>&1; then
   fail "Couldn't load the Opie code from this folder."
 fi
 echo "✓  Opie code loads"
 
-# 4. Create the config (with a strong token) and record where the code lives.
+# 5. Create the config (with a strong token) and record where the code lives.
 if ! PYTHONPATH="$DIR" "$PY" - "$DIR" <<'PYEOF'
 import sys
 from opie import config
 config.set_install_root(sys.argv[1])
 path, created = config.ensure_exists()
 print(("•  Created config: " if created else "•  Config exists:  ") + path)
-print("•  Recorded code location for autostart")
+print("•  Recorded code location for autostart + auto-update")
 PYEOF
 then
   fail "Could not write the config."
 fi
 
-# 5. Double-clickable launcher in this folder.
+# 6. Double-clickable launcher in this folder.
 LAUNCH="$DIR/Opie Control.command"
 cat > "$LAUNCH" <<LEOF
 #!/bin/bash
@@ -101,6 +118,9 @@ echo
 echo "✅  Done — opening Opie Control now."
 echo "   • Re-open any time with 'Opie Control.command' in this folder."
 echo "   • Keep this folder where it is; the app runs from here."
+if [ "${GIT_CLONE:-0}" = "1" ]; then
+  echo "   • Auto-update is ON: Opie keeps itself current from GitHub."
+fi
 echo "   • To remove Opie later, double-click uninstall.command"
 cd "$DIR"
 nohup "$PY" -m opie.gui >/dev/null 2>&1 &

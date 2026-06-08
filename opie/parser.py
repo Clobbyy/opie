@@ -129,6 +129,22 @@ _PARAMS = {
 _PARAM_RX = re.compile(
     r"\b(" + "|".join(sorted(_PARAMS, key=len, reverse=True)) +
     r")\s+(-?\d+(?:\.\d+)?)\b")
+# Bare parameter on the *current* selection: "gobo 3", "pan 50", "iris 20".
+_BARE_PARAM_RX = re.compile(
+    r"(" + "|".join(sorted(_PARAMS, key=len, reverse=True)) +
+    r")\s+(-?\d+(?:\.\d+)?)")
+
+# Action verbs that operate on a selection and take NO numeric value. Spoken
+# word -> Eos command-line token. These reach commands that have no dedicated
+# OSC address, by typing them onto the Eos command line (e.g. "Chan 5 Sneak#").
+# Multi-word forms ("rem dim") are normalized to a single token in parse().
+_ACTIONS = {
+    "sneak": "Sneak", "highlight": "Highlight", "lowlight": "Lowlight",
+    "park": "Park", "unpark": "Unpark", "mark": "Mark",
+    "block": "Block", "unblock": "Unblock", "assert": "Assert",
+    "capture": "Capture", "release": "Release", "query": "Query",
+    "rem_dim": "Rem_Dim", "make_manual": "Make_Manual",
+}
 
 # Raw command-line passthrough: multi-word spoken phrases -> Eos tokens.
 # Applied (longest first) before single-word translation in _spoken_to_cmd().
@@ -144,20 +160,42 @@ _CMD_WORDS = {
     "channel": "Chan", "channels": "Chan", "chan": "Chan", "ch": "Chan",
     "group": "Group", "groups": "Group", "sub": "Sub", "submaster": "Sub",
     "subs": "Sub", "cue": "Cue", "preset": "Preset", "macro": "Macro",
-    "address": "Address", "addr": "Address",
+    "address": "Address", "addr": "Address", "effect": "Effect", "fx": "Effect",
+    "snapshot": "Snapshot", "curve": "Curve", "fixture": "Fixture",
     "thru": "Thru", "through": "Thru", "to": "Thru",
     "at": "At", "full": "Full", "out": "Out", "home": "Home",
     "and": "+", "plus": "+", "minus": "-",
     "record": "Record", "update": "Update", "delete": "Delete",
     "copy": "Copy", "move": "Move", "label": "Label", "block": "Block",
-    "sneak": "Sneak", "highlight": "Highlight", "park": "Park", "unpark": "Unpark",
+    "unblock": "Unblock", "assert": "Assert", "capture": "Capture",
+    "release": "Release", "query": "Query",
+    "sneak": "Sneak", "highlight": "Highlight", "lowlight": "Lowlight",
+    "park": "Park", "unpark": "Unpark", "mark": "Mark",
     "intensity": "Intensity", "color": "Color", "colour": "Color",
     "focus": "Focus", "beam": "Beam", "time": "Time", "fan": "Fan",
     "enter": "#", "go": "Go", "stop": "Stop", "back": "Back",
+    "next": "Next", "last": "Last", "select": "Select",
     "pan": "Pan", "tilt": "Tilt", "zoom": "Zoom", "iris": "Iris",
     "edge": "Edge", "frost": "Frost", "gobo": "Gobo", "hue": "Hue",
-    "saturation": "Saturation",
+    "saturation": "Saturation", "diffusion": "Diffusion", "cto": "CTO",
+    "red": "Red", "green": "Green", "blue": "Blue", "white": "White",
+    "amber": "Amber", "cyan": "Cyan", "magenta": "Magenta", "yellow": "Yellow",
 }
+
+# Words that signal a genuine Eos command. Used to decide whether an otherwise
+# unrecognized phrase should be passed through to the Eos command line as a
+# fallback (so the FULL command set is reachable), rather than rejected.
+_CMD_TRIGGERS = (
+    {w for w, t in _CMD_WORDS.items() if t not in ("+", "-", "#", "Thru", "At")}
+    | set(_ACTIONS)
+    | set(_PARAMS)
+    | {phrase.split()[0] for phrase, _ in _CMD_PHRASES}
+)
+
+
+def _has_eos_keyword(text: str) -> bool:
+    """True if any whitespace token in `text` is a recognized Eos command word."""
+    return any(tok in _CMD_TRIGGERS for tok in text.split())
 
 
 def _spoken_to_cmd(spoken: str) -> str:
@@ -227,6 +265,10 @@ def _parse_level(level_tokens):
     m = _PARAM_RX.search(lv)
     if m:
         return ("param", (_PARAMS[m.group(1)], float(m.group(2))))
+    # bare action verb following a selection: "channel 5 sneak", "group 2 mark"
+    for word, tok in _ACTIONS.items():
+        if re.search(rf"\b{re.escape(word)}\b", lv):
+            return ("action", tok)
     if "full" in lv:
         return ("named", "full")
     if re.search(r"\b(out|off|zero)\b", lv):
@@ -294,6 +336,12 @@ def _build_single(path, kw, n, level, label):
     kind, val = level
     pretty_n = n
 
+    # Action verbs (Sneak, Mark, Highlight, ...) have no dedicated OSC address;
+    # type them onto the command line after the selection ("Chan 5 Sneak#").
+    if kind == "action":
+        return ([("/eos/cmd", [f"{kw} {n} {val}#"])],
+                f"{label} {pretty_n} {val.replace('_', ' ').lower()}")
+
     if path == "sub":
         # submasters use 0.0..1.0
         if kind == "named" and val in ("full", "out"):
@@ -355,6 +403,9 @@ def _build_multi(kw, sel, level, label):
         sel_pretty = " and ".join(str(x) for x in nums)
 
     kind, val = level
+    if kind == "action":
+        return ([("/eos/cmd", [f"{kw} {sel_str} {val}#"])],
+                f"{label}s {sel_pretty} {val.replace('_', ' ').lower()}")
     if kind == "named":
         if val in ("full", "out", "home", "min", "max"):
             return ([("/eos/cmd", [f"{kw} {sel_str} At {val.capitalize()}#"])],
@@ -400,6 +451,9 @@ def parse(phrase: str, config: dict) -> ParseResult:
     text = re.sub(r"(\d)\s+point\s+(\d)", r"\1.\2", text)
     # Siri often transcribes "cue" as "queue"/"que"/"q"
     text = re.sub(r"\b(?:queue|que|q)\b", "cue", text)
+    # collapse multi-word Eos verbs into single tokens so they parse as one action
+    text = re.sub(r"\brem\s+dim\b", "rem_dim", text)
+    text = re.sub(r"\bmake\s+manual\b", "make_manual", text)
     text = re.sub(r"\s+", " ", text).strip()
 
     macro_map = {k.lower(): v for k, v in (config.get("macro_map") or {}).items()}
@@ -500,16 +554,42 @@ def parse(phrase: str, config: dict) -> ParseResult:
         return ParseResult(True, f"Bumped submaster {n}",
                            [(f"/eos/sub/{n}/fire", [1.0]), (f"/eos/sub/{n}/fire", [0.0])])
 
+    # 6b) BARE COMMANDS on the CURRENT selection (no target named) — these drive
+    #     the full Eos vocabulary on whatever channels are already selected:
+    #       action verbs: "sneak", "highlight", "mark", "park", "rem dim", ...
+    #       parameters:   "gobo 3", "pan 50", "iris 20", "zoom 75"
+    #       levels:       "full", "out", "home", "at 50", "75 percent"
+    if text in _ACTIONS:
+        tok = _ACTIONS[text]
+        return ParseResult(True, tok.replace("_", " "), [("/eos/cmd", [f"{tok}#"])])
+    m = _BARE_PARAM_RX.fullmatch(text)
+    if m:
+        pname, pval = _PARAMS[m.group(1)], m.group(2)
+        return ParseResult(True, f"{pname} {pval}",
+                           [("/eos/cmd", [f"{pname.capitalize()} {pval}#"])])
+    m = re.fullmatch(r"(?:at )?(full|out|home|min|max)", text)
+    if m:
+        return ParseResult(True, m.group(1), [(f"/eos/at/{m.group(1)}", [])])
+    m = re.fullmatch(r"at (\d+)(?: percent| %)?|(\d+) (?:percent|%)", text)
+    if m:
+        val = _clamp(int(m.group(1) or m.group(2)), 0, 100)
+        return ParseResult(True, f"at {val} percent", [("/eos/at", [float(val)])])
+
     # 7) target + selector + level  (channels / groups / subs / addresses)
     for rx, (path, kw) in _TARGETS:
         m = rx.search(text)
         if not m:
             continue
+        before = text[:m.start()].strip()
         after = text[m.end():].strip().split()
         sel, rest = _selector_and_rest(after)
         if sel is None:
             return ParseResult(False, f"I heard '{path}' but no number.")
         level = _parse_level(rest)
+        if level is None and before:
+            # the level/verb may have been spoken BEFORE the target:
+            #   "sneak channel 5", "full group 2", "blue channel 7"
+            level = _parse_level(before.split())
         if level is None:
             return ParseResult(False,
                                f"I heard '{' '.join([m.group(0)] + after)}' but no level.")
@@ -523,8 +603,17 @@ def parse(phrase: str, config: dict) -> ParseResult:
             return ParseResult(False, conf)
         return ParseResult(True, conf, msgs)
 
+    # 8) FALLBACK — no specific rule matched, but if the phrase contains a
+    #    recognized Eos command word, translate the whole thing onto the command
+    #    line. This makes the ENTIRE Eos command set reachable by voice (any verb,
+    #    target, or parameter the console understands) without the "command"
+    #    prefix. The relay's destructive_policy still gates dangerous verbs.
+    if _has_eos_keyword(text):
+        cmd = _spoken_to_cmd(text)
+        return ParseResult(True, f"Command: {cmd.rstrip('#')}", [("/eos/cmd", [cmd])])
+
     return ParseResult(
         False,
         "Sorry, I didn't understand that. Try things like "
-        "'channel 5 at full', 'group 3 at 50 percent', or 'go'.",
+        "'channel 5 at full', 'group 3 at 50 percent', 'sneak', or 'go'.",
     )

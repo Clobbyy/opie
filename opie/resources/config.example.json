@@ -13,5 +13,6 @@
     "go": "go_0",
     "stop_back": "stop_back_main_cuelist"
   },
-  "destructive_policy": "record_update"
+  "destructive_policy": "record_update",
+  "auto_update": true
 }
