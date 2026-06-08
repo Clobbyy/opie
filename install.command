@@ -6,6 +6,7 @@
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LOGDIR="$HOME/Library/Logs/Opie"; mkdir -p "$LOGDIR"
 LOG="$LOGDIR/install.log"
+PYORG="https://www.python.org/downloads/macos/"
 
 # Mirror all output to a log file AND always pause, so the window never just
 # vanishes on an error.
@@ -20,25 +21,53 @@ echo "======================================================"
 echo "Folder: $DIR"
 echo
 
-# 1. Python 3 must be present and runnable (Command Line Tools).
+# 1. Need *some* python3 just to run the checks (Command Line Tools is fine here).
 if ! command -v python3 >/dev/null 2>&1 || ! python3 --version >/dev/null 2>&1; then
   echo "Python 3 isn't ready yet. In Terminal run:"
   echo "    xcode-select --install"
   fail "Install the developer tools, then double-click install.command again."
 fi
-PY="$(command -v python3)"
-echo "✓  $("$PY" --version)   ($PY)"
 
-# 2. Tkinter (the GUI toolkit) must work.
-if ! "$PY" -c "import tkinter" >/dev/null 2>&1; then
-  echo "This python3 has no Tk, so the control panel can't open."
-  echo "Fix it with either:"
-  echo "   • install Python 3 from python.org   (recommended), or"
-  echo "   • brew install python-tk"
-  echo "The relay still works headless:  PYTHONPATH=\"$DIR\" \"$PY\" -m opie"
-  fail "Tk (Tkinter) is missing from this Python."
+# 2. The control panel needs a Python whose Tk is >= 8.6. The macOS system Tk is
+#    8.5 and crashes on recent macOS, so we hunt for a good one (python.org / brew).
+tk_ok() { "$1" -c 'import sys,tkinter; sys.exit(0 if tkinter.TkVersion>=8.6 else 1)' >/dev/null 2>&1; }
+pick_python() {
+  local c
+  for c in \
+      /Library/Frameworks/Python.framework/Versions/3.1[0-9]/bin/python3 \
+      /opt/homebrew/bin/python3 \
+      /opt/homebrew/bin/python3.1[0-9] \
+      /usr/local/bin/python3 \
+      "$(command -v python3 2>/dev/null)"; do
+    [ -n "$c" ] && [ -x "$c" ] || continue
+    if tk_ok "$c"; then echo "$c"; return 0; fi
+  done
+  return 1
+}
+
+PY="$(pick_python || true)"
+if [ -z "$PY" ]; then
+  echo "⚠️   The control panel needs Tk 8.6+, which the Mac's built-in Python lacks"
+  echo "    (its Tk 8.5 crashes on recent macOS)."
+  echo
+  if command -v brew >/dev/null 2>&1; then
+    read -r -p "Homebrew is installed — install a compatible Python now (brew install python-tk)? [Y/n] " ans
+    case "$ans" in
+      [nN]*) ;;
+      *) echo "Installing (a few minutes)…"; brew install python-tk && PY="$(pick_python || true)" ;;
+    esac
+  fi
 fi
-echo "✓  Tkinter present"
+if [ -z "$PY" ]; then
+  echo
+  echo "Install Python 3 from python.org (free, one download):"
+  echo "    $PYORG"
+  read -r -p "Open that page now? [Y/n] " ans
+  case "$ans" in [nN]*) ;; *) open "$PYORG" ;; esac
+  echo "After installing it, double-click install.command again."
+  fail "No Python with a working Tk found yet."
+fi
+echo "✓  Using $("$PY" --version 2>&1)  ($PY)  — Tk OK"
 
 # 3. The opie package must import from this folder.
 if ! PYTHONPATH="$DIR" "$PY" -c "import opie" >/dev/null 2>&1; then

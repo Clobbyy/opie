@@ -34,10 +34,12 @@ drops an **`Opie Control.command`** launcher in this folder to re-open it any ti
 
 To remove everything later, double-click **`uninstall.command`**.
 
-> Requires **Python 3** on the Mac (`python3 --version`; if missing, run
-> `xcode-select --install`). Everything else is Python standard library — no packages to
-> download. If your `python3` can't open a window, install Python 3 from
-> [python.org](https://www.python.org/downloads/macos/) (it includes Tk).
+> Requires **Python 3** on the Mac. The control panel needs **Tk ≥ 8.6**, but Apple's
+> built-in `/usr/bin/python3` ships the deprecated **Tk 8.5**, which crashes on recent
+> macOS. So the installer looks for a good Python and, if it doesn't find one, offers to
+> install one (via Homebrew's `python-tk`) or points you to
+> [python.org](https://www.python.org/downloads/macos/) (its Python includes Tk 8.6).
+> The relay itself runs headless on any Python 3 — only the window needs the newer Tk.
 
 ### Install for developers (pip, from the private repo)
 

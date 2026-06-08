@@ -530,14 +530,47 @@ class OpieGUI:
         subprocess.run(["open", os.path.dirname(self.config_path)])
 
 
-def main():
-    root = tk.Tk()
-    root.title("Opie Control")
+PYTHON_ORG_URL = "https://www.python.org/downloads/macos/"
+
+
+def _native_alert(title, message, offer_url=None):
+    """Show a real macOS dialog via AppleScript (Tk is unusable here)."""
+    buttons = '{"Open python.org", "OK"}' if offer_url else '{"OK"}'
+    default = '"OK"'
+    script = (f'display dialog {json.dumps(message)} with title {json.dumps(title)} '
+              f'buttons {buttons} default button {default} with icon caution')
     try:
-        OpieGUI(root)
-    except tk.TclError as e:
-        print(f"Could not start the GUI: {e}", file=sys.stderr)
+        r = subprocess.run(["osascript", "-e", script],
+                           capture_output=True, text=True, timeout=300)
+        if offer_url and "Open python.org" in (r.stdout or ""):
+            subprocess.run(["open", offer_url])
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def main():
+    # The macOS system Python links the deprecated Tk 8.5, which crashes
+    # (Tcl_Panic in TkpInit) on modern macOS. Refuse it cleanly instead.
+    if tk.TkVersion < 8.6:
+        msg = (f"Opie's control panel needs Tk 8.6 or newer, but this Python uses "
+               f"the deprecated macOS system Tk {tk.TkVersion}, which crashes on "
+               f"recent macOS.\n\n"
+               f"Fix: install Python 3 from python.org (free), then run "
+               f"install.command again — Opie will automatically use it.\n\n"
+               f"(The relay still runs fine headless; only the window needs newer Tk.)")
+        print(msg, file=sys.stderr)
+        _native_alert("Opie can’t open its window", msg, offer_url=PYTHON_ORG_URL)
         return 1
+    try:
+        root = tk.Tk()
+    except tk.TclError as e:
+        msg = (f"Could not open a window: {e}\n\n"
+               f"Install Python 3 from python.org and re-run install.command.")
+        print(msg, file=sys.stderr)
+        _native_alert("Opie can’t open its window", msg, offer_url=PYTHON_ORG_URL)
+        return 1
+    root.title("Opie Control")
+    OpieGUI(root)
     root.mainloop()
     return 0
 
