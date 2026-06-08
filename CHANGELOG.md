@@ -6,6 +6,11 @@ All notable changes to Opie are documented here. This project uses
 ## [Unreleased]
 
 ### Added
+- **One-paste install (`bootstrap.sh`)** — the recommended setup when you don't
+  have an Apple Developer ID. A single `curl … | bash` line clones Opie and runs
+  the installer; because `git`/`curl` downloads aren't quarantined, it never trips
+  the macOS *"unidentified developer"* prompt, and it auto-updates. `install.command`
+  also strips the quarantine flag now, so the downloaded-ZIP path only prompts once.
 - **Native macOS installers** for a download-and-double-click setup (no Terminal,
   Git, or pip):
   - **`Opie-<ver>.pkg`** — guided installer that puts **Opie.app** in
