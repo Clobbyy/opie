@@ -6,6 +6,16 @@ All notable changes to Opie are documented here. This project uses
 ## [Unreleased]
 
 ### Added
+- **Native macOS installers** for a download-and-double-click setup (no Terminal,
+  Git, or pip):
+  - **`Opie-<ver>.pkg`** — guided installer that puts **Opie.app** in
+    `/Applications`.
+  - **`Opie-<ver>.dmg`** — drag **Opie** onto **Applications**.
+  - Both wrap a real `Opie.app` (a thin launcher that runs the bundled package
+    with a Tk-8.6+ Python); first launch self-configures the token + code path.
+  - Built by `packaging/build_pkg.sh` / `build_dmg.sh` (or `build_all.sh`) on a
+    Mac, or automatically by a new CI workflow (`.github/workflows/release.yml`)
+    that publishes them as artifacts and attaches them to tagged releases.
 - **Full Eos command coverage by voice.** Any command the console understands is
   now reachable as a spoken phrase, not just the built-in patterns:
   - Bare action verbs on the current selection — `sneak`, `highlight`, `lowlight`,
