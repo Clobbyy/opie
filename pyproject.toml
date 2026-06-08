@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "opie"
+description = "Speak to Siri to control an ETC Eos/Nomad lighting console — a pure-stdlib HTTP→OSC relay with a Tkinter control panel."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "LicenseRef-Proprietary" }
+authors = [{ name = "The Opie Authors" }]
+keywords = ["ETC", "Eos", "Nomad", "OSC", "lighting", "Siri", "theatre", "stage"]
+classifiers = [
+    "Private :: Do Not Upload",
+    "Environment :: MacOS X",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia",
+]
+dynamic = ["version"]
+dependencies = []   # pure standard library — no third-party runtime deps
+
+[project.scripts]
+opie = "opie.relay:main"
+opie-gui = "opie.gui:main"
+opie-sniff = "opie.sniffer:main"
+
+[tool.setuptools]
+packages = ["opie"]
+include-package-data = true
+
+[tool.setuptools.dynamic]
+version = { attr = "opie.__version__" }
+
+[tool.setuptools.package-data]
+opie = ["resources/*"]

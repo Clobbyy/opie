@@ -5,24 +5,22 @@ receives so you can confirm exactly what the relay would send to Eos *before*
 pointing it at a real console.
 
 Usage:
-    python3 relay/osc_sniffer.py            # listens on 0.0.0.0:8000
-    python3 relay/osc_sniffer.py 9000       # listens on a different port
+    opie-sniff            # listens on 0.0.0.0:8000
+    opie-sniff 9000       # listens on a different port
 
 Test flow:
-    1. Set relay/config.json -> "NOMAD_IP": "127.0.0.1", "EOS_RX_PORT": 8000
-    2. Terminal A:  python3 relay/osc_sniffer.py 8000
-    3. Terminal B:  python3 relay/relay.py
+    1. In the GUI (or config) set "NOMAD_IP": "127.0.0.1", "EOS_RX_PORT": 8000
+    2. Terminal A:  opie-sniff 8000
+    3. Terminal B:  opie
     4. Terminal C:  curl -s -X POST http://127.0.0.1:8765/command \
                         -H "X-Token: YOUR_TOKEN" --data "channel 5 at full"
     -> the sniffer prints:  /eos/chan/5/full
 """
 
-import os
 import socket
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import osclib  # noqa: E402
+from . import osclib
 
 
 def main():

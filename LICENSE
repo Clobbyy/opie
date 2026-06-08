@@ -1,0 +1,40 @@
+Opie — Proprietary Software License
+Copyright (c) 2026 The Opie Authors. All rights reserved.
+
+This software and its source code (the "Software") are the confidential and
+proprietary property of the copyright holder ("Licensor"). They are licensed,
+not sold.
+
+1. GRANT. Subject to payment of any applicable fees and to these terms, Licensor
+   grants the purchaser ("Licensee") a non-exclusive, non-transferable license to
+   install and use one (1) copy of the Software on hardware Licensee owns or
+   controls, for Licensee's own use.
+
+2. RESTRICTIONS. Licensee shall NOT, without Licensor's prior written consent:
+   (a) copy, redistribute, sublicense, sell, rent, lease, or lend the Software or
+       provide it as a service to third parties;
+   (b) publish or disclose the source code;
+   (c) reverse engineer, decompile, or create derivative works for distribution.
+
+3. OWNERSHIP. Licensor retains all right, title, and interest in the Software,
+   including all intellectual property rights. No rights are granted except as
+   expressly stated here.
+
+4. NO WARRANTY. THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+
+5. LIMITATION OF LIABILITY. The Software sends control commands to professional
+   lighting equipment. Licensee is solely responsible for testing on non-critical
+   targets before live use. IN NO EVENT SHALL LICENSOR BE LIABLE FOR ANY CLAIM,
+   DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR
+   OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE
+   OR OTHER DEALINGS IN THE SOFTWARE.
+
+6. TERMINATION. This license terminates automatically if Licensee breaches any
+   term. On termination, Licensee must stop using and destroy all copies.
+
+-------------------------------------------------------------------------------
+NOTE: This is a starting-point commercial license template, not legal advice.
+Before selling, have a lawyer review it and adapt the terms (refunds, support,
+seats, jurisdiction) to your situation.

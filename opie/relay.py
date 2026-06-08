@@ -8,12 +8,14 @@ and sends the OSC over UDP to the Nomad on the isolated lighting network.
 
   iPhone --HTTP--> [ this relay ] --OSC/UDP--> Nomad (Eos)
 
-Pure standard library. No pip installs. No API calls. Configure via config.json
-next to this file.
+Pure standard library. No pip installs. No API calls. Configure via the GUI
+("opie-gui") or by editing the JSON config (default:
+~/Library/Application Support/Opie/config.json).
 
 Run:
-    python3 relay/relay.py
-    python3 relay/relay.py --config /path/to/config.json
+    opie                         # console entry point
+    python3 -m opie              # same thing
+    python3 -m opie --config /path/to/config.json
 
 Endpoints:
     POST /command   body = the spoken phrase (text/plain) or JSON {"text": "..."}
@@ -34,9 +36,9 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import osclib  # noqa: E402
-import parser as nlparser  # noqa: E402
+from . import config as opie_config
+from . import osclib
+from . import parser as nlparser
 
 DEFAULT_CONFIG = {
     "NOMAD_IP": "127.0.0.1",      # Eos/Nomad lighting-network IP (use 127.0.0.1 for loopback test)
@@ -232,16 +234,23 @@ def make_handler(relay):
 
 def main():
     ap = argparse.ArgumentParser(description="ETC Nomad voice-control relay")
-    ap.add_argument("--config",
-                    default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                         "config.json"))
+    ap.add_argument("--config", default=opie_config.default_config_path())
     args = ap.parse_args()
 
+    # First run: scaffold a config (with a freshly generated token) so there is
+    # always something to load.
+    opie_config.ensure_exists(args.config)
     cfg = load_config(args.config)
 
+    # Always log to a file (default: ~/Library/Logs/Opie/relay.log) so the GUI's
+    # live-log pane has one source of truth, plus stdout for terminal/launchd capture.
+    log_file = cfg.get("LOG_FILE") or opie_config.default_log_path()
     handlers = [logging.StreamHandler(sys.stdout)]
-    if cfg.get("LOG_FILE"):
-        handlers.append(logging.FileHandler(cfg["LOG_FILE"]))
+    try:
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+        handlers.append(logging.FileHandler(log_file))
+    except OSError as e:
+        print(f"warning: could not open log file {log_file}: {e}", file=sys.stderr)
     logging.basicConfig(level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s",
                         handlers=handlers)

@@ -9,11 +9,13 @@ Exit code is non-zero if anything fails.
 import os
 import sys
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "relay"))
+# Run from a clean clone with no install: put the repo root on the path so the
+# `opie` package imports. (After `pip install`, the package is importable anyway.)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-import osclib  # noqa: E402
-import parser  # noqa: E402
-import relay   # noqa: E402
+from opie import osclib   # noqa: E402
+from opie import parser   # noqa: E402
+from opie import relay    # noqa: E402
 
 # (messages, policy, expected_safe_count) for the relay's destructive filter
 POLICY_CASES = [
