@@ -3,6 +3,18 @@
 All notable changes to Opie are documented here. This project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- Installer no longer requires the internet or `pip`/`setuptools` — it runs the app
+  straight from the source folder with a suitable Python (fixes the silent
+  "python failed to open" install failure on offline machines).
+- GUI no longer hard-crashes on the deprecated macOS system **Tk 8.5** (the
+  `Tcl_Panic`/`TkpInit` abort). It now requires **Tk ≥ 8.6**, and:
+  - the GUI shows a friendly native dialog (with a python.org link) instead of crashing;
+  - the installer auto-selects a Tk-8.6 Python (python.org or Homebrew) and offers to
+    install one if none is present.
+
 ## [0.1.0] — 2026-06-08
 
 First packaged release.
