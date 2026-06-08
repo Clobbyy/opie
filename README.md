@@ -16,47 +16,47 @@ See [`docs/OSC_REFERENCE.md`](docs/OSC_REFERENCE.md).
 
 ---
 
-## Install (easy path)
+## Install
 
-1. Get this repo onto the theatre **Mac**. Two ways:
-   - **Clone with Git** *(recommended — enables automatic updates):*
-     ```bash
-     git clone https://github.com/Clobbyy/opie.git ~/Opie
-     ```
-   - **Or download the ZIP** from GitHub and unzip it somewhere permanent.
-2. Open the folder and double-click **`install.command`**.
-   - First time from a download, macOS may say *"unidentified developer."* Right-click the
-     file → **Open** → **Open**. (It just runs the visible shell script in this folder.)
-3. The **Opie Control** window opens. That's it.
+### Easiest: download the macOS installer
 
-The installer runs offline — **no pip, no virtualenv.** It uses the Mac's built-in
-Python 3 to run the app straight from this folder, creates your config (with a freshly
-generated security token) under `~/Library/Application Support/Opie/`, and drops an
-**`Opie Control.command`** launcher in this folder to re-open it any time.
+1. Grab the latest **`Opie-<version>.pkg`** (or **`.dmg`**) from the
+   [**Releases**](https://github.com/Clobbyy/opie/releases) page.
+2. **`.pkg`** — double-click → click through the installer → **Opie** lands in your
+   **Applications** folder.
+   **`.dmg`** — double-click → drag **Opie** onto **Applications**.
+3. Open **Opie** from Applications. First launch creates your settings (with a freshly
+   generated security token) automatically — then set your Console IP and token.
 
-> **Keep this folder where it is** after installing — the app runs from here. (Put it
-> somewhere permanent first, e.g. your Applications or home folder.)
+> First open, macOS may say *"unidentified developer"* (the app isn't notarized yet):
+> right-click **Opie** → **Open** → **Open**, or System Settings → Privacy & Security →
+> **Open Anyway**. You only do this once.
+>
+> The control panel needs **Python 3 with Tk ≥ 8.6**. Apple's built-in `/usr/bin/python3`
+> ships the deprecated **Tk 8.5**, so if that's all you have, Opie pops a dialog with a
+> one-click link to [python.org](https://www.python.org/downloads/macos/) (whose Python
+> includes Tk 8.6). The relay itself runs headless on any Python 3.
 
-### Updates are automatic
+*(Maintainers: the installers are built by `packaging/build_all.sh` on a Mac, or
+automatically by CI — see [`packaging/README.md`](packaging/README.md).)*
 
-If you cloned with Git, Opie **keeps itself current** — no reinstalling to get changes:
+### Alternative: clone with Git (adds automatic updates)
 
-- The relay fast-forwards to the latest code each time it starts (e.g. at login when
-  autostart is on).
-- The control panel checks on launch; there's also a **Check for updates** button and an
-  **Auto-update** toggle in the window. When an update lands it restarts the relay onto the
-  new code automatically.
+```bash
+git clone https://github.com/Clobbyy/opie.git ~/Opie
+```
 
-Downloaded-ZIP and `pip` installs don't auto-update (the window just says so) — re-run
-`install.command` after pulling, or `pip install -U`, to update those. To remove everything
-later, double-click **`uninstall.command`**.
+Then double-click **`install.command`** in the folder (right-click → **Open** the first
+time). It runs offline — **no pip, no virtualenv** — using the Mac's Python 3 straight from
+the folder, creates your config, and drops an **`Opie Control.command`** launcher.
 
-> Requires **Python 3** on the Mac. The control panel needs **Tk ≥ 8.6**, but Apple's
-> built-in `/usr/bin/python3` ships the deprecated **Tk 8.5**, which crashes on recent
-> macOS. So the installer looks for a good Python and, if it doesn't find one, offers to
-> install one (via Homebrew's `python-tk`) or points you to
-> [python.org](https://www.python.org/downloads/macos/) (its Python includes Tk 8.6).
-> The relay itself runs headless on any Python 3 — only the window needs the newer Tk.
+**Updates are automatic on this path:** the relay fast-forwards to the latest code each
+time it starts (e.g. at login with autostart on), and the control panel checks on launch
+with a **Check for updates** button and an **Auto-update** toggle. A downloaded `.pkg`/`.dmg`
+updates by installing a newer one (its "Check for updates" opens the Releases page).
+
+> **Keep this folder where it is** after installing — the app runs from here. To remove
+> everything later, double-click **`uninstall.command`**.
 
 ### Install for developers (pip, from the private repo)
 
@@ -185,10 +185,12 @@ Config lives at `~/Library/Application Support/Opie/config.json`; logs at
 ## Selling / distribution notes
 - This repo is **private**; the included [`LICENSE`](LICENSE) is a proprietary template
   (have a lawyer adapt it before you sell).
-- Easiest model today: grant a buyer access to the private repo (or send a zip) and have
-  them run `install.command`.
-- A future signed `.app` bundle would remove the Gatekeeper prompt for non-technical
-  buyers — that needs an Apple Developer ID and notarization.
+- **Hand a buyer a `.pkg` or `.dmg`** built by CI (tag a release) or `packaging/build_all.sh`
+  — they double-click to install, no repo access or Terminal needed. See
+  [`packaging/README.md`](packaging/README.md).
+- The installers are **unsigned**, so the first open needs right-click → **Open**. Signing +
+  notarization (an Apple Developer ID) removes that prompt — the steps are in
+  `packaging/README.md`.
 
 ## Project layout
 ```
@@ -199,12 +201,15 @@ opie/                 the package
   gui.py              Opie Control panel             (entry point: opie-gui)
   config.py           config + path resolution (token generation, log path)
   service.py          launchd autostart control
+  update.py           self-update (git pull) for clone installs
   sniffer.py          loopback OSC sniffer           (entry point: opie-sniff)
   resources/          config.example.json, launchd plist template
+packaging/            build Opie.app + .pkg/.dmg macOS installers
 tests/test_parser.py  offline tests (no hardware)
 docs/OSC_REFERENCE.md the Eos OSC commands + console setup
 shortcuts/SHORTCUT_SETUP.md  build the iPhone Shortcut
-install.command / uninstall.command   double-click installers
+install.command / uninstall.command   double-click installers (clone path)
+.github/workflows/    CI tests + macOS installer builds
 ```
 
 No external dependencies — everything is Python standard library.

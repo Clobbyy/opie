@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Info.plist for Opie.app. @VERSION@ is filled in by packaging/build_app.sh.
+  The app is a thin launcher (Contents/MacOS/Opie) that runs the bundled Python
+  package in Contents/Resources/opie with a Tk-8.6+ Python found on the system.
+-->
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>Opie</string>
+    <key>CFBundleDisplayName</key>
+    <string>Opie</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.opie.control</string>
+    <key>CFBundleVersion</key>
+    <string>@VERSION@</string>
+    <key>CFBundleShortVersionString</key>
+    <string>@VERSION@</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleExecutable</key>
+    <string>Opie</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>10.13</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <!-- GUI app: no Dock-less background; show in Dock while open. -->
+    <key>LSUIElement</key>
+    <false/>
+</dict>
+</plist>

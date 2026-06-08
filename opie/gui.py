@@ -28,6 +28,10 @@ from . import update as opie_update
 
 POLICIES = ["block_all", "record_update", "allow_all"]
 
+# Where packaged (.pkg/.dmg) installs go to grab a newer build, since they can't
+# self-update the way a Git clone does.
+RELEASES_URL = "https://github.com/Clobbyy/opie/releases"
+
 # Plain-language fields shown as single-line entries: (config key, label, width)
 TEXT_FIELDS = [
     ("NOMAD_IP", "Console IP (Nomad/Eos)", 24),
@@ -589,7 +593,11 @@ class OpieGUI:
                 self._flash("Up to date.")
         elif status == opie_update.UNAVAILABLE:
             if manual:
-                messagebox.showinfo("Updates", msg)
+                if messagebox.askyesno(
+                        "Updates",
+                        f"{msg}\n\nOpen the Opie downloads page to get the latest "
+                        "installer?"):
+                    subprocess.run(["open", RELEASES_URL])
         else:  # ERROR
             if manual:
                 messagebox.showwarning("Update check", msg)
