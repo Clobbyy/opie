@@ -46,6 +46,42 @@ git tag v0.2.0 && git push origin v0.2.0
 - A **Git clone** + `install.command` keeps itself current automatically
   (`git pull` on start) — see the top-level README. Pick whichever fits the user.
 
+## Shipping the one-paste install while the repo stays private
+
+`bootstrap.sh` is the recommended no-Developer-ID install (top-level README). The
+`curl … | bash` form only needs the **script** to be fetchable without auth — which
+a private repo's `raw.githubusercontent.com` URL is **not**. The code can stay
+private; only the tiny bootstrap script needs a public home. Two ways:
+
+**A. Publish just the bootstrap as a public Gist** (≈2 min; the script contains no
+secrets — only clone-and-install steps):
+
+1. Go to <https://gist.github.com> → new **public** gist → filename `bootstrap.sh`
+   → paste this repo's `bootstrap.sh` → **Create public gist**.
+2. Click **Raw** and copy that URL.
+3. Hand buyers this one line:
+   ```bash
+   /bin/bash -c "$(curl -fsSL <raw-gist-url>)"
+   ```
+
+The script then `git clone`s the **private** repo, which prompts the buyer to sign
+in to GitHub (they need collaborator access — or have them install GitHub Desktop
+and sign in first). Pin a release with `OPIE_REF`, e.g. prepend `OPIE_REF=v0.2.0`.
+
+> Keep the Gist in sync if you change `bootstrap.sh` here. To avoid that entirely,
+> point the Gist's body at this file's raw URL with a token, or just use option B.
+
+**B. Skip hosting** — give buyers the manual clone line (works the moment they're
+signed in / a collaborator, including via GitHub Desktop):
+
+```bash
+git clone https://github.com/Clobbyy/opie.git ~/Applications/Opie && bash ~/Applications/Opie/install.command
+```
+
+Either way: no Apple Developer ID, no Gatekeeper prompt. (Making the repo **public**
+would let the bare `raw.githubusercontent.com` one-liner work with zero sign-in, but
+that publishes the source — only do it if you're OK with that.)
+
 ## Signing & notarization (optional, removes the Gatekeeper prompt)
 
 The installers are **unsigned**, so the first open needs right-click → **Open**
