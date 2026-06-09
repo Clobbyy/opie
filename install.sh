@@ -49,9 +49,9 @@ else
 fi
 xattr -dr com.apple.quarantine "$SRC" >/dev/null 2>&1 || true
 
-# 3) Find a Python 3. The relay needs only the standard library, so the Mac's
-#    built-in python3 is fine. (The optional control panel wants Tk 8.6+, but the
-#    voice relay — the part that matters — runs on any python3.)
+# 3) Find a Python 3. Both the relay AND the browser control panel use only the
+#    standard library, so the Mac's built-in python3 is all you need — nothing to
+#    install (no Tk, no python.org, no Homebrew).
 step "Checking Python"
 PY=""
 for c in /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3 "$(command -v python3 2>/dev/null)"; do
@@ -112,30 +112,29 @@ else
   warn "couldn't enable autostart automatically — open the app and click Start."
 fi
 
-# 7) A clickable "Opie" app to open the control panel (locally generated, so no
-#    Gatekeeper prompt). It auto-finds a Tk-8.6+ Python; if none, it points the
-#    user to python.org. The relay itself doesn't need it.
+# 7) A clickable "Opie" app that opens the control panel in your browser. The
+#    panel is pure standard library, so it runs on ANY python3 — no Tk needed.
+#    Generated locally, so it carries no quarantine flag (no Gatekeeper prompt).
 step "Adding the Opie app to your Applications"
 mkdir -p "$APP/Contents/MacOS"
 {
   cat <<'LSTART'
 #!/bin/bash
-tk_ok() { "$1" -c 'import sys,tkinter; sys.exit(0 if tkinter.TkVersion>=8.6 else 1)' >/dev/null 2>&1; }
+# Opie.app — opens the browser control panel (Tk not required).
 PY=""
-for c in /Library/Frameworks/Python.framework/Versions/3.1[0-9]/bin/python3 \
-         /opt/homebrew/bin/python3 /opt/homebrew/bin/python3.1[0-9] \
-         /usr/local/bin/python3 "$(command -v python3 2>/dev/null)"; do
-  [ -n "$c" ] && [ -x "$c" ] && tk_ok "$c" && { PY="$c"; break; }
+for c in /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3 "$(command -v python3 2>/dev/null)"; do
+  [ -n "$c" ] && [ -x "$c" ] && { PY="$c"; break; }
 done
 if [ -z "$PY" ]; then
   osascript >/dev/null 2>&1 \
-    -e 'set r to display dialog "Opie'"'"'s control panel needs Python 3 with Tk 8.6+ (the macOS built-in Python uses the old Tk 8.5). Install Python 3 from python.org (free), then open Opie again.\n\nThe voice relay keeps working without it." with title "Opie" buttons {"Open python.org","OK"} default button "OK" with icon caution' \
-    -e 'if button returned of r is "Open python.org" then do shell script "open https://www.python.org/downloads/macos/"'
+    -e 'display dialog "Opie needs Python 3, which comes with Apple'"'"'s Command Line Tools.\n\nOpen Terminal and run:  xcode-select --install" with title "Opie" buttons {"OK"} default button "OK" with icon caution'
   exit 1
 fi
 LSTART
   printf 'export PYTHONPATH=%q\n' "$SRC"
-  printf 'exec "$PY" -m opie.gui\n'
+  # Launch the panel detached so the .app itself doesn't linger in the Dock.
+  printf 'nohup "$PY" -m opie.panel >/dev/null 2>&1 &\n'
+  printf 'exit 0\n'
 } > "$APP/Contents/MacOS/Opie"
 chmod +x "$APP/Contents/MacOS/Opie"
 cat > "$APP/Contents/Info.plist" <<PLIST
@@ -161,13 +160,12 @@ say ""
 say "======================================================"
 say "✅  Opie is installed and running."
 say "======================================================"
-say "  • Control panel: Applications → Opie (or Spotlight “Opie”)"
+say "  • Control panel: open “Opie” (Applications / Spotlight) — it opens in your browser"
 say "  • Relay URL:     http://localhost:$PORT/command"
 say "  • Your token:    $TOKEN"
 say ""
-say "  Next: set your Console IP (if you skipped it) in the app, then build the"
-say "  iPhone Shortcut from the app's “Test & Help → Phone setup info” — that"
-say "  shows the exact URL + token for Siri."
+say "  Next: in the panel, set your Console IP (if you skipped it), then build the"
+say "  iPhone Shortcut using the URL + token shown under “Test & phone setup”."
 say ""
 say "  Update later:  re-paste the same install command."
 say "  Uninstall:     /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Clobbyy/opie/main/uninstall.sh)\""
