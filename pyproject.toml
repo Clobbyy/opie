@@ -22,6 +22,7 @@ dependencies = []   # pure standard library — no third-party runtime deps
 [project.scripts]
 opie = "opie.relay:main"
 opie-gui = "opie.gui:main"
+opie-panel = "opie.panel:main"
 opie-sniff = "opie.sniffer:main"
 
 [tool.setuptools]

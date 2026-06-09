@@ -6,6 +6,14 @@ All notable changes to Opie are documented here. This project uses
 ## [Unreleased]
 
 ### Added
+- **Browser control panel (`opie.panel`) — no Tk required.** The settings/Start-Stop/
+  logs/test UI is now a tiny localhost-only web app served from the standard library, so
+  it runs on the Mac's built-in `python3`. This removes the Tk 8.6 requirement entirely
+  (the old `Tk 8.5` crash and the python.org detour are gone for normal use). The native
+  Tk window (`opie-gui`) stays as a legacy alternative. New `opie-panel` entry point; the
+  installer's **Opie** app now opens the panel in the browser.
+- Hardened `service` so a missing/erroring `launchctl` degrades gracefully instead of
+  raising (keeps the panel's status endpoint working everywhere).
 - **One-command install.** The entire setup is now a single line pasted into
   Terminal — `/bin/bash -c "$(curl -fsSL …/install.sh)"` — plus a matching
   `uninstall.sh`. It downloads the code, generates the token, starts the relay,

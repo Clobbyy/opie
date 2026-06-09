@@ -2,7 +2,8 @@
 
 Speak normal phrases to Siri → they become **ETC Eos OSC** messages → your **Nomad**
 console reacts. No API credits, no subscriptions, no cloud — just a tiny Python relay
-on the theatre Mac and an Apple Shortcut on your phone, managed from a small desktop app.
+on the theatre Mac and an Apple Shortcut on your phone, managed from a browser control
+panel. Everything runs on the Mac's built-in Python 3 — nothing else to install.
 
 ```
 iPhone (Siri Shortcut)  --HTTP over Tailscale-->  Mac: Opie relay  --OSC/UDP-->  Nomad (Eos)
@@ -32,10 +33,9 @@ asks once for your Console (Nomad) IP — press Return to set it later in the ap
 - **No Apple Developer ID, no "unidentified developer" prompt.** macOS only flags files
   that carry the *quarantine* tag (set by browsers/Mail) — `curl`/`git` downloads don't, so
   nothing here is ever blocked.
-- **Nothing else to install.** The voice relay runs on the Mac's built-in Python 3. (Only
-  the optional settings window wants newer Tk; if you open it without that, Opie shows a
-  one-click link to [python.org](https://www.python.org/downloads/macos/) — the relay keeps
-  working regardless.)
+- **Nothing else to install.** Both the relay *and* the control panel use only Python's
+  standard library, so the Mac's built-in `python3` is all you need — no Tk, no python.org,
+  no Homebrew. The panel opens in your **browser** (it's a tiny localhost-only web app).
 - **Auto-updates.** The relay fast-forwards to the latest code each time it starts; the app
   also has a **Check for updates** button. Re-paste the command any time to update by hand.
 
@@ -46,23 +46,30 @@ asks once for your Console (Nomad) IP — press Return to set it later in the ap
 > The install command works for anyone because the repo is **public**. If you fork it
 > private, the command needs the code hosted somewhere fetchable without a login (see
 > *Selling / distribution notes* below). Developers can also `pip install` the repo to get
-> the `opie`, `opie-gui`, and `opie-sniff` commands.
+> the `opie`, `opie-panel`, and `opie-sniff` commands.
 
 ---
 
-## The Opie Control app
+## The Opie Control panel
 
-One window, four sections:
+Open **Opie** (Applications/Spotlight) and it opens a control panel in your browser
+(`http://localhost:8766` — localhost only, so just you can reach it). It's pure
+standard library, so it needs **no Tk** and runs on the Mac's built-in Python. One page,
+four sections:
 
-- **Setup** — Console IP, ports, bind address, destructive policy, and the shared token
-  (with **Generate** / **Copy**). Edit the **macro map** (spoken word → console macro #)
-  and **key map** (spoken word → console key). **Save** or **Save & Restart**.
-- **Control bar** — **Start / Stop / Restart**, plus **Autostart at login** (installs a
-  launchd agent so the relay runs whenever the Mac boots) and **Auto-update** (keep the
-  Git clone current). A status dot shows running/stopped and the listening URL.
-- **Logs** — live tail of the relay log, with Pause / Clear / Reveal in Finder.
-- **Test & Help** — send a phrase straight to the relay and hear the spoken reply, check
-  whether the console IP is reachable, and grab the **iPhone Shortcut** URL + token.
+- **Relay** — **Start / Stop / Restart** and **Autostart at login** (installs a launchd
+  agent so the relay runs whenever the Mac boots). A status dot shows running/stopped and
+  the listening URL.
+- **Setup** — Console IP, ports, bind address, destructive policy, **Auto-update**, and the
+  shared token (with **Generate** / **Copy**). Edit the **macro map** (spoken word → console
+  macro #) and **key map** (spoken word → console key). **Save** or **Save & Restart**.
+- **Test & phone setup** — send a phrase straight to the relay and see the spoken reply,
+  check whether the console is reachable, check for updates, and copy the **iPhone Shortcut**
+  URL + token.
+- **Logs** — live tail of the relay log, with Pause / Clear.
+
+> A native Tk window (`opie-gui`) is still bundled as a legacy alternative, but it needs
+> Tk 8.6+ and isn't required — the browser panel is the default.
 
 ---
 
@@ -102,7 +109,7 @@ See [`docs/OSC_REFERENCE.md`](docs/OSC_REFERENCE.md) for the full vocabulary tab
 - *(Same-Wi-Fi alternative: skip Tailscale and use the Mac's LAN IP; on-site only.)*
 
 ### 3. Build the iPhone Shortcut
-Use **Test & Help → Phone setup info** for the exact URL + token, then follow
+Use the panel's **Test & phone setup** section for the exact URL + token, then follow
 [`shortcuts/SHORTCUT_SETUP.md`](shortcuts/SHORTCUT_SETUP.md). Then:
 **"Hey Siri, Lighting Control" → "channel 5 at full."**
 
@@ -112,7 +119,7 @@ Use **Test & Help → Phone setup info** for the exact URL + token, then follow
 
 ```bash
 python3 -m opie.sniffer 8000     # terminal A: prints the OSC the relay would send
-# In the GUI set Console IP = 127.0.0.1, Start, then use the Test box:
+# In the panel set Console IP = 127.0.0.1, Start, then use the Test box:
 #   "channel 5 at full"  ->  sniffer prints  /eos/chan/5/full
 ```
 
@@ -133,11 +140,12 @@ From the project folder (the offline / no-pip way):
 ```bash
 python3 -m opie                    # run the relay (reads the default config)
 python3 -m opie --config /p.json   # custom config
-python3 -m opie.gui                # the control panel
+python3 -m opie.panel              # the browser control panel (no Tk)
+python3 -m opie.gui                # legacy Tk window (needs Tk 8.6+)
 python3 -m opie.sniffer [port]     # loopback OSC sniffer
 ```
 
-After a `pip install`, the same things are the commands `opie`, `opie-gui`, `opie-sniff`.
+After a `pip install`, the same things are the commands `opie`, `opie-panel`, `opie-sniff`.
 
 Config lives at `~/Library/Application Support/Opie/config.json`; logs at
 `~/Library/Logs/Opie/`. Override the config path with the `OPIE_CONFIG` env var.
@@ -181,7 +189,8 @@ opie/                 the package
   relay.py            HTTP -> OSC relay              (entry point: opie)
   parser.py           natural-language -> OSC translator (rule-based, no AI)
   osclib.py           minimal OSC encoder/decoder (stdlib only)
-  gui.py              Opie Control panel             (entry point: opie-gui)
+  panel.py            browser control panel (stdlib, no Tk)  (entry point: opie-panel)
+  gui.py              legacy Tk control window               (entry point: opie-gui)
   config.py           config + path resolution (token generation, log path)
   service.py          launchd autostart control
   update.py           self-update (git pull) on relay start

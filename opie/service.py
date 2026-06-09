@@ -79,7 +79,13 @@ def install(**kw) -> str:
 
 
 def _launchctl(*args):
-    return subprocess.run(["launchctl", *args], capture_output=True, text=True)
+    try:
+        return subprocess.run(["launchctl", *args], capture_output=True, text=True)
+    except (OSError, subprocess.SubprocessError):
+        # launchctl missing or unusable (non-macOS, locked-down env): act like a
+        # clean failure so callers (is_loaded/enable/disable) degrade instead of
+        # raising. The relay still runs fine as a plain subprocess.
+        return subprocess.CompletedProcess(args, 1, "", "launchctl unavailable")
 
 
 def load():
