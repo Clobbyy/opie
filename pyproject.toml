@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opie"
-description = "Speak to Siri to control an ETC Eos/Nomad lighting console — a pure-stdlib HTTP→OSC relay with a Tkinter control panel."
+description = "Speak to Siri to control an ETC Eos/Nomad lighting console — a pure-stdlib HTTP→OSC relay with a browser control panel."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "LicenseRef-Proprietary" }
@@ -21,7 +21,6 @@ dependencies = []   # pure standard library — no third-party runtime deps
 
 [project.scripts]
 opie = "opie.relay:main"
-opie-gui = "opie.gui:main"
 opie-panel = "opie.panel:main"
 opie-sniff = "opie.sniffer:main"
 

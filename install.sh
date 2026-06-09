@@ -99,17 +99,26 @@ IPSET="$(printf '%s\n'  "$INFO" | sed -n 's/^IP=//p')"
 say "  ✓ config: $CONFIG"
 say "  ✓ console IP: ${IPSET:-not set yet}"
 
-# 6) Run automatically at login (and start it now) via a launchd agent.
-step "Starting Opie (now and at every login)"
-if PYTHONPATH="$SRC" "$PY" - "$PY" "$CONFIG" <<'PYEOF' >/dev/null 2>&1
+# 6) Start the relay now. It runs as a detached, log-captured background process
+#    managed by the panel — reliable and visible, no fragile launchd dependency.
+#    (Any old/broken launchd agent from a previous install is cleared first.
+#    Boot-persistence is an opt-in "Autostart at login" toggle in the panel.)
+step "Starting the relay"
+PYTHONPATH="$SRC" "$PY" - "$CONFIG" <<'PYEOF' >/dev/null 2>&1 || true
 import sys
-from opie import service
-service.enable(python_exe=sys.argv[1], config_path=sys.argv[2])
+try:
+    from opie import service
+    service.disable()      # clear any prior launchd agent so it can't conflict
+except Exception:
+    pass
+from opie.panel import Controller
+Controller(sys.argv[1]).ensure_running()
 PYEOF
-then
+sleep 2
+if curl -fsS "http://localhost:$PORT/health" >/dev/null 2>&1; then
   say "  ✓ relay running on http://localhost:$PORT  → OSC to ${IPSET:-127.0.0.1}:8000"
 else
-  warn "couldn't enable autostart automatically — open the app and click Start."
+  warn "relay didn't answer yet — open Opie and click Start; the panel shows any error."
 fi
 
 # 7) A clickable "Opie" app that opens the control panel in your browser. The
@@ -166,6 +175,8 @@ say "  • Your token:    $TOKEN"
 say ""
 say "  Next: in the panel, set your Console IP (if you skipped it), then build the"
 say "  iPhone Shortcut using the URL + token shown under “Test & phone setup”."
+say "  Tip:  turn on “Autostart at login” in the panel to keep the relay running"
+say "        after a reboot."
 say ""
 say "  Update later:  re-paste the same install command."
 say "  Uninstall:     /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Clobbyy/opie/main/uninstall.sh)\""

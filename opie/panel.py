@@ -1,9 +1,10 @@
 """
-Opie Control — a browser-based control panel. **No Tkinter, no Tk 8.6 required.**
+Opie Control — a browser-based control panel. **No Tkinter, no Tk required.**
 
-The Tk window (opie.gui) needs Tk 8.6+, which the Mac's built-in python3 lacks.
-This panel does the same job with a tiny localhost-only web server built entirely
-from the standard library, so it runs on *any* python3 — nothing to install.
+Earlier versions used a Tkinter window, which needed Tk 8.6+ that the Mac's
+built-in python3 lacks (Apple ships the deprecated Tk 8.5). This panel does the
+same job with a tiny localhost-only web server built entirely from the standard
+library, so it runs on *any* python3 — nothing to install.
 
   python3 -m opie.panel      # start the panel and open your browser
   opie-panel                 # same, after a pip install
@@ -16,10 +17,12 @@ phone-facing endpoint still requires the token.
 import argparse
 import json
 import os
+import signal
 import socket
 import subprocess
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 import webbrowser
@@ -46,7 +49,12 @@ class Controller:
     def __init__(self, config_path):
         self.config_path = config_path
         opie_config.ensure_exists(config_path)
-        self.proc = None  # relay subprocess when not launchd-managed
+
+    def _pidfile(self):
+        return os.path.join(opie_config.app_support_dir(), "relay.pid")
+
+    def _outlog(self):
+        return os.path.join(opie_config.logs_dir(), "relay.out.log")
 
     # ---- config ----
     def load(self):
@@ -74,36 +82,100 @@ class Controller:
         return cfg
 
     # ---- relay process ----
+    # The relay runs as a DETACHED subprocess (its own session, so it survives the
+    # panel closing) with stdout+stderr captured to relay.out.log, and its PID
+    # recorded so we can stop it later. This doesn't depend on launchd, so a broken
+    # launchd job can't block Start, and crashes are visible (relay.out.log).
+    def _port(self):
+        return int(self.load().get("HTTP_PORT", 8765))
+
     def _spawn(self):
-        if self.proc and self.proc.poll() is None:
-            return
-        cfg = self.load()
-        log = cfg.get("LOG_FILE") or opie_config.default_log_path()
+        if self._health(self._port()):
+            return  # already up — don't double-start
         try:
-            os.makedirs(os.path.dirname(log), exist_ok=True)
+            os.makedirs(opie_config.logs_dir(), exist_ok=True)
         except OSError:
             pass
         env = dict(os.environ)
         root = opie_config.get_install_root()
         if root:
             env["PYTHONPATH"] = root + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
-        self.proc = subprocess.Popen(
+        out = open(self._outlog(), "a")
+        out.write(f"\n--- starting relay {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+        out.flush()
+        proc = subprocess.Popen(
             [sys.executable, "-m", "opie", "--config", self.config_path],
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            cwd=root or opie_config.app_support_dir(), env=env)
+            stdout=out, stderr=subprocess.STDOUT,
+            cwd=root or opie_config.app_support_dir(), env=env,
+            start_new_session=True)  # detach so it outlives the panel
+        try:
+            with open(self._pidfile(), "w") as f:
+                f.write(str(proc.pid))
+        except OSError:
+            pass
 
     def _kill(self):
-        if self.proc and self.proc.poll() is None:
-            self.proc.terminate()
-            try:
-                self.proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                self.proc.kill()
-        self.proc = None
+        pid = None
+        try:
+            with open(self._pidfile()) as f:
+                pid = int(f.read().strip())
+        except (OSError, ValueError):
+            pid = None
+        if pid:
+            for sig in (signal.SIGTERM, signal.SIGKILL):
+                try:
+                    os.kill(pid, sig)
+                except ProcessLookupError:
+                    break
+                except OSError:
+                    break
+                time.sleep(0.4)
+                if not self._pid_alive(pid):
+                    break
+        try:
+            os.remove(self._pidfile())
+        except OSError:
+            pass
+
+    @staticmethod
+    def _pid_alive(pid):
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
+
+    def wait_healthy(self, seconds=6.0):
+        end = time.time() + seconds
+        port = self._port()
+        while time.time() < end:
+            if self._health(port):
+                return True
+            time.sleep(0.4)
+        return False
+
+    def relay_log_tail(self, lines=40):
+        try:
+            with open(self._outlog(), "r", errors="replace") as f:
+                return "".join(f.readlines()[-lines:]).strip()
+        except OSError:
+            return ""
+
+    def ensure_running(self):
+        if not self._health(self._port()):
+            self.control("start")
 
     def control(self, action):
         if action == "start":
-            service.restart() if service.is_loaded() else self._spawn()
+            if service.is_loaded():
+                service.restart()
+                if not self.wait_healthy(5):
+                    # launchd job is loaded but not coming up — drop it and run
+                    # the relay directly so Start always works.
+                    service.disable()
+                    self._spawn()
+            else:
+                self._spawn()
         elif action == "stop":
             if service.is_loaded():
                 service.disable()
@@ -112,7 +184,7 @@ class Controller:
             if service.is_loaded():
                 service.restart()
             else:
-                self._kill(); self._spawn()
+                self._kill(); time.sleep(0.3); self._spawn()
         elif action == "autostart_on":
             self._kill()
             service.enable(python_exe=sys.executable, config_path=self.config_path)
@@ -170,7 +242,9 @@ class Controller:
             return False
 
     def logs(self, pos):
-        path = self.load().get("LOG_FILE") or opie_config.default_log_path()
+        # The captured console log (relay.out.log) holds both normal logging and
+        # any startup crash, so it's the most useful thing to show.
+        path = self._outlog()
         try:
             size = os.path.getsize(path)
             if size < pos:
@@ -245,8 +319,16 @@ def make_handler(ctrl):
                         ctrl.control("restart")
                     self._json({"ok": True})
                 elif p.path == "/api/control":
-                    ctrl.control(data.get("action", ""))
-                    self._json({"ok": True})
+                    action = data.get("action", "")
+                    ctrl.control(action)
+                    resp = {"ok": True}
+                    if action in ("start", "restart"):
+                        resp["running"] = ctrl.wait_healthy(6)
+                        if not resp["running"]:
+                            resp["error"] = (ctrl.relay_log_tail()
+                                             or "The relay did not start. Check that "
+                                                "python3 works and the port is free.")
+                    self._json(resp)
                 elif p.path == "/api/test":
                     code, body = ctrl.test(str(data.get("phrase", "")))
                     self._json({"code": code, "body": body})
@@ -292,6 +374,9 @@ def main():
             _open(url)
         return 0
 
+    # Opening Opie should make it work: bring the relay up if it isn't already.
+    threading.Thread(target=ctrl.ensure_running, daemon=True).start()
+
     print(f"Opie Control: {url}  (Ctrl-C to quit)")
     if not args.no_browser:
         threading.Timer(0.6, lambda: _open(url)).start()
@@ -316,7 +401,8 @@ PAGE = """<!doctype html>
   body { font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
          margin: 0; background: #f5f5f7; color: #1d1d1f; }
   @media (prefers-color-scheme: dark) { body { background:#1c1c1e; color:#f2f2f7; }
-    .card{background:#2c2c2e!important;} input,select,textarea{background:#1c1c1e;color:#f2f2f7;border-color:#48484a!important;} }
+    .card{background:#2c2c2e!important;} input,select,textarea{background:#1c1c1e;color:#f2f2f7;border-color:#48484a!important;}
+    button{background:#3a3a3c;color:#f2f2f7;border-color:#5a5a5e;} button:hover{background:#48484a;} }
   header { display:flex; align-items:center; gap:10px; padding:14px 20px;
            background:#fff; border-bottom:1px solid #d2d2d7; position:sticky; top:0; }
   @media (prefers-color-scheme: dark){ header{background:#2c2c2e;border-color:#3a3a3c;} }
@@ -336,8 +422,10 @@ PAGE = """<!doctype html>
   .row { display:flex; gap:12px; flex-wrap:wrap; }
   .row > div { flex:1; min-width:140px; }
   button { font:inherit; font-weight:600; padding:8px 14px; border-radius:8px;
-           border:1px solid #c7c7cc; background:#fff; cursor:pointer; }
+           border:1px solid #b9b9c0; background:#fbfbfd; color:#1d1d1f; cursor:pointer; }
+  button:hover { background:#ececf1; }
   button.primary { background:#0071e3; color:#fff; border-color:#0071e3; }
+  button.primary:hover { background:#0064c8; }
   button:active { transform: translateY(1px); }
   .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
   .grow { flex:1; }
@@ -369,6 +457,7 @@ PAGE = """<!doctype html>
         onchange="ctl(this.checked?'autostart_on':'autostart_off')"> Autostart at login</label>
     </div>
     <p id="url" class="muted note" style="margin:10px 0 0"></p>
+    <pre id="relayerr" class="err" style="display:none; white-space:pre-wrap; margin:10px 0 0; font:12px ui-monospace,Menlo,monospace"></pre>
   </div>
 
   <div class="card">
@@ -470,7 +559,15 @@ async function save(restart){
   $('saved').className='ok'; $('saved').textContent=r.ok?(restart?'Saved & restarting…':'Saved.'):(r.error||'Error');
   setTimeout(()=>$('saved').textContent='',2500);
 }
-async function ctl(action){ await api('/api/control',{method:'POST',body:JSON.stringify({action})}); setTimeout(refresh,700); }
+async function ctl(action){
+  const err=$('relayerr'); err.style.display='none'; err.textContent='';
+  let r; try{ r=await api('/api/control',{method:'POST',body:JSON.stringify({action})}); }catch(e){ r={}; }
+  if((action==='start'||action==='restart') && r && (r.running===false || r.error)){
+    err.textContent='Relay did not start:\\n\\n'+(r.error||'unknown error');
+    err.style.display='block';
+  }
+  refresh();
+}
 async function genToken(){ const r=await api('/api/token'); $('TOKEN').value=r.token; }
 async function sendTest(){
   $('testres').textContent='sending…'; $('testres').className='note';

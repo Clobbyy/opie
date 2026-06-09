@@ -8,8 +8,8 @@ and sends the OSC over UDP to the Nomad on the isolated lighting network.
 
   iPhone --HTTP--> [ this relay ] --OSC/UDP--> Nomad (Eos)
 
-Pure standard library. No pip installs. No API calls. Configure via the GUI
-("opie-gui") or by editing the JSON config (default:
+Pure standard library. No pip installs. No API calls. Configure via the control
+panel ("opie-panel") or by editing the JSON config (default:
 ~/Library/Application Support/Opie/config.json).
 
 Run:
@@ -33,6 +33,7 @@ import logging
 import os
 import socket
 import sys
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -262,16 +263,6 @@ def main():
     if cfg.get("TOKEN") in ("", "CHANGE_ME"):
         log.warning("TOKEN is still the default — set a real secret in config.json")
 
-    # Self-update: if running from a Git clone and a newer commit is available,
-    # fast-forward and re-exec into it before we start serving. Best-effort and
-    # bounded; offline/no-git/not-a-clone just continues on the current code.
-    status = opie_update.self_update_and_reexec(cfg)  # may not return (re-execs)
-    if status == opie_update.ERROR:
-        log.warning("auto-update check could not complete; running current version")
-    elif status == opie_update.CURRENT and opie_update.is_git_clone():
-        log.info("auto-update: already on the latest version (%s)",
-                 opie_update.current_revision() or "unknown")
-
     relay = Relay(cfg)
     port = int(cfg["HTTP_PORT"])
     bind = cfg["BIND_ADDR"]
@@ -285,6 +276,16 @@ def main():
         server = ThreadingHTTPServer((bind, port), make_handler(relay))
     log.info("relay listening on http://%s:%d  ->  OSC %s:%d",
              bind, port, cfg["NOMAD_IP"], int(cfg["EOS_RX_PORT"]))
+
+    # Auto-update runs in the BACKGROUND so a slow `git fetch` never delays (or
+    # blocks) the relay from coming up. If a newer commit is found it fast-forwards
+    # and re-execs into it (a brief blip), otherwise it's a no-op. Best-effort.
+    def _bg_update():
+        try:
+            opie_update.self_update_and_reexec(cfg)  # may execv (replaces process)
+        except Exception as e:  # noqa: BLE001
+            log.warning("auto-update check failed: %s", e)
+    threading.Thread(target=_bg_update, daemon=True).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

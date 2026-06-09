@@ -68,9 +68,6 @@ four sections:
   URL + token.
 - **Logs** — live tail of the relay log, with Pause / Clear.
 
-> A native Tk window (`opie-gui`) is still bundled as a legacy alternative, but it needs
-> Tk 8.6+ and isn't required — the browser panel is the default.
-
 ---
 
 ## What you can say
@@ -140,8 +137,7 @@ From the project folder (the offline / no-pip way):
 ```bash
 python3 -m opie                    # run the relay (reads the default config)
 python3 -m opie --config /p.json   # custom config
-python3 -m opie.panel              # the browser control panel (no Tk)
-python3 -m opie.gui                # legacy Tk window (needs Tk 8.6+)
+python3 -m opie.panel              # the browser control panel
 python3 -m opie.sniffer [port]     # loopback OSC sniffer
 ```
 
@@ -189,8 +185,7 @@ opie/                 the package
   relay.py            HTTP -> OSC relay              (entry point: opie)
   parser.py           natural-language -> OSC translator (rule-based, no AI)
   osclib.py           minimal OSC encoder/decoder (stdlib only)
-  panel.py            browser control panel (stdlib, no Tk)  (entry point: opie-panel)
-  gui.py              legacy Tk control window               (entry point: opie-gui)
+  panel.py            browser control panel (stdlib)         (entry point: opie-panel)
   config.py           config + path resolution (token generation, log path)
   service.py          launchd autostart control
   update.py           self-update (git pull) on relay start
