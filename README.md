@@ -30,6 +30,12 @@ That's it — it downloads Opie, runs the installer, and opens the control panel
 launch creates your settings (with a freshly generated security token); then set your
 Console IP and token.
 
+> **While this repo is private**, that `raw.githubusercontent.com` URL isn't publicly
+> fetchable, so the bare `curl` line works only once the bootstrap is hosted publicly
+> (a 2-minute public-Gist step — the code stays private; see
+> [`packaging/README.md`](packaging/README.md)). Until then, use a no-host equivalent
+> below — both avoid Gatekeeper just the same.
+
 **Why this is the best route without a paid Apple Developer ID:** macOS's *"unidentified
 developer"* prompt only appears on files carrying the **quarantine** flag, which browsers
 and Mail stamp on downloads — but `git`/`curl` **don't**. So a clone-based install never
