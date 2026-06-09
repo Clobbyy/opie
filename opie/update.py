@@ -7,10 +7,10 @@ fast-forward `git pull` — so users get repo updates without re-downloading or
 re-installing anything. Pure standard library; shells out to `git`.
 
 Used in two places:
-  * relay.main()  — on startup, optionally self-update and re-exec into the new
-    code (so the autostart relay stays current without anyone opening the GUI).
-  * gui.py        — a background check on launch plus a "Check for updates"
-    button, which then restarts the relay onto the new code.
+  * relay.main()  — on startup (in the background) self-update and re-exec into
+    the new code, so the relay stays current without anyone opening the panel.
+  * panel.py      — the "Check for updates" button, which then restarts the relay
+    onto the new code.
 
 Everything here is best-effort and non-fatal: no network, no git, or a copy that
 isn't a clone (e.g. a downloaded ZIP) just means "no auto-update", never a crash.
