@@ -6,21 +6,20 @@ All notable changes to Opie are documented here. This project uses
 ## [Unreleased]
 
 ### Added
-- **One-paste install (`bootstrap.sh`)** — the recommended setup when you don't
-  have an Apple Developer ID. A single `curl … | bash` line clones Opie and runs
-  the installer; because `git`/`curl` downloads aren't quarantined, it never trips
-  the macOS *"unidentified developer"* prompt, and it auto-updates. `install.command`
-  also strips the quarantine flag now, so the downloaded-ZIP path only prompts once.
-- **Native macOS installers** for a download-and-double-click setup (no Terminal,
-  Git, or pip):
-  - **`Opie-<ver>.pkg`** — guided installer that puts **Opie.app** in
-    `/Applications`.
-  - **`Opie-<ver>.dmg`** — drag **Opie** onto **Applications**.
-  - Both wrap a real `Opie.app` (a thin launcher that runs the bundled package
-    with a Tk-8.6+ Python); first launch self-configures the token + code path.
-  - Built by `packaging/build_pkg.sh` / `build_dmg.sh` (or `build_all.sh`) on a
-    Mac, or automatically by a new CI workflow (`.github/workflows/release.yml`)
-    that publishes them as artifacts and attaches them to tagged releases.
+- **One-command install.** The entire setup is now a single line pasted into
+  Terminal — `/bin/bash -c "$(curl -fsSL …/install.sh)"` — plus a matching
+  `uninstall.sh`. It downloads the code, generates the token, starts the relay,
+  enables login autostart, and adds an **Opie** app to `~/Applications`. No Apple
+  Developer ID and no Gatekeeper prompt (`curl`/`git` downloads aren't quarantined),
+  and the relay runs on the Mac's built-in Python 3 — only the optional settings
+  window wants newer Tk. Re-paste to update.
+
+### Changed
+- **Reset the install process to one option.** Removed the `.pkg`/`.dmg` installers,
+  the `Opie.app` packaging scripts, the `bootstrap.sh`/`install.command` variants,
+  and the release-build workflow in favor of the single `install.sh`/`uninstall.sh`.
+
+### Added (voice)
 - **Full Eos command coverage by voice.** Any command the console understands is
   now reachable as a spoken phrase, not just the built-in patterns:
   - Bare action verbs on the current selection — `sneak`, `highlight`, `lowlight`,

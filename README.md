@@ -18,73 +18,35 @@ See [`docs/OSC_REFERENCE.md`](docs/OSC_REFERENCE.md).
 
 ## Install
 
-### Recommended: one-paste install (no Apple Developer ID, no Gatekeeper prompt)
-
-Open **Terminal** (Spotlight → "Terminal") and paste **one** line:
-
-```bash
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Clobbyy/opie/main/bootstrap.sh)"
-```
-
-That's it — it downloads Opie, runs the installer, and opens the control panel. First
-launch creates your settings (with a freshly generated security token); then set your
-Console IP and token.
-
-> **While this repo is private**, that `raw.githubusercontent.com` URL isn't publicly
-> fetchable, so the bare `curl` line works only once the bootstrap is hosted publicly
-> (a 2-minute public-Gist step — the code stays private; see
-> [`packaging/README.md`](packaging/README.md)). Until then, use a no-host equivalent
-> below — both avoid Gatekeeper just the same.
-
-**Why this is the best route without a paid Apple Developer ID:** macOS's *"unidentified
-developer"* prompt only appears on files carrying the **quarantine** flag, which browsers
-and Mail stamp on downloads — but `git`/`curl` **don't**. So a clone-based install never
-trips Gatekeeper at all, and as a bonus it **auto-updates** (see below). No right-click
-dance, no "Open Anyway."
-
-Prefer not to use Terminal? Two equivalents:
-- **GitHub Desktop** → *Clone repository* → `Clobbyy/opie`, then double-click
-  **`install.command`** in the cloned folder (no prompt — cloned files aren't quarantined).
-- Or clone manually and run the installer:
-  ```bash
-  git clone https://github.com/Clobbyy/opie.git ~/Applications/Opie
-  bash ~/Applications/Opie/install.command
-  ```
-
-The installer runs offline — **no pip, no virtualenv** — using the Mac's Python 3 straight
-from the folder, creates your config, and drops an **`Opie Control.command`** launcher.
-
-**Updates are automatic on this path:** the relay fast-forwards to the latest code each
-time it starts (e.g. at login with autostart on), and the control panel has a **Check for
-updates** button and an **Auto-update** toggle. Re-paste the one-liner any time to update by
-hand. To remove everything later, double-click **`uninstall.command`**.
-
-> Requires **Python 3 with Tk ≥ 8.6**. Apple's built-in `/usr/bin/python3` ships the
-> deprecated **Tk 8.5**, so if that's all you have, Opie pops a dialog with a one-click link
-> to [python.org](https://www.python.org/downloads/macos/) (whose Python includes Tk 8.6).
-> The relay itself runs headless on any Python 3.
-
-### Or: the macOS installer (.pkg / .dmg)
-
-A familiar double-click installer, at the cost of a **one-time** Gatekeeper bypass (it's
-unsigned). Grab the latest **`Opie-<version>.pkg`** or **`.dmg`** from the
-[**Releases**](https://github.com/Clobbyy/opie/releases) page → install (pkg: click through;
-dmg: drag **Opie** to **Applications**) → first open, right-click **Opie** → **Open** →
-**Open** (or System Settings → Privacy & Security → **Open Anyway**). Update by installing a
-newer build (the app's "Check for updates" opens the Releases page).
-
-*(Maintainers: the installers are built by `packaging/build_all.sh` on a Mac, or
-automatically by CI — see [`packaging/README.md`](packaging/README.md).)*
-
-### Install for developers (pip, from the private repo)
+On the theatre **Mac**, open **Terminal** (press ⌘-Space, type "Terminal", Return) and
+paste this one line:
 
 ```bash
-pip install "git+ssh://git@github.com/Clobbyy/opie.git"     # SSH (recommended)
-# or, with an HTTPS token:
-pip install "git+https://github.com/Clobbyy/opie.git"
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Clobbyy/opie/main/install.sh)"
 ```
 
-Gives you the `opie`, `opie-gui`, and `opie-sniff` commands. (This path needs internet.)
+That's the whole install. It downloads Opie, generates your security token, starts the
+relay, sets it to run at every login, and adds an **Opie** app to your Applications. It
+asks once for your Console (Nomad) IP — press Return to set it later in the app instead.
+
+- **No Apple Developer ID, no "unidentified developer" prompt.** macOS only flags files
+  that carry the *quarantine* tag (set by browsers/Mail) — `curl`/`git` downloads don't, so
+  nothing here is ever blocked.
+- **Nothing else to install.** The voice relay runs on the Mac's built-in Python 3. (Only
+  the optional settings window wants newer Tk; if you open it without that, Opie shows a
+  one-click link to [python.org](https://www.python.org/downloads/macos/) — the relay keeps
+  working regardless.)
+- **Auto-updates.** The relay fast-forwards to the latest code each time it starts; the app
+  also has a **Check for updates** button. Re-paste the command any time to update by hand.
+
+**Update:** re-paste the install command.
+**Uninstall:** paste
+`/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Clobbyy/opie/main/uninstall.sh)"`.
+
+> The install command works for anyone because the repo is **public**. If you fork it
+> private, the command needs the code hosted somewhere fetchable without a login (see
+> *Selling / distribution notes* below). Developers can also `pip install` the repo to get
+> the `opie`, `opie-gui`, and `opie-sniff` commands.
 
 ---
 
@@ -201,14 +163,17 @@ Config lives at `~/Library/Application Support/Opie/config.json`; logs at
 - New phrasings: add a rule in `parser.parse()` and a case in `tests/test_parser.py`.
 
 ## Selling / distribution notes
-- This repo is **private**; the included [`LICENSE`](LICENSE) is a proprietary template
-  (have a lawyer adapt it before you sell).
-- **Hand a buyer a `.pkg` or `.dmg`** built by CI (tag a release) or `packaging/build_all.sh`
-  — they double-click to install, no repo access or Terminal needed. See
-  [`packaging/README.md`](packaging/README.md).
-- The installers are **unsigned**, so the first open needs right-click → **Open**. Signing +
-  notarization (an Apple Developer ID) removes that prompt — the steps are in
-  `packaging/README.md`.
+- The included [`LICENSE`](LICENSE) is a proprietary template (have a lawyer adapt it
+  before you sell). The one-line installer needs the code **publicly fetchable**, so the
+  simplest setup is a **public repo** — you can still sell it with a license key; only the
+  source becomes visible.
+- **To keep the code private** while keeping the one-paste install, host `install.sh` plus a
+  tarball of the code at a public URL you control (e.g. a Vercel deployment) and point the
+  `curl` command there — buyers never sign in or hit Gatekeeper, and you can gate or rotate
+  the URL. (Ask and this can be scaffolded.)
+- No Apple Developer ID is required either way: `curl`/`git` downloads aren't quarantined, so
+  the installer never trips Gatekeeper. A signed `.pkg` would only matter if you later want a
+  browser-download install.
 
 ## Project layout
 ```
@@ -219,16 +184,15 @@ opie/                 the package
   gui.py              Opie Control panel             (entry point: opie-gui)
   config.py           config + path resolution (token generation, log path)
   service.py          launchd autostart control
-  update.py           self-update (git pull) for clone installs
+  update.py           self-update (git pull) on relay start
   sniffer.py          loopback OSC sniffer           (entry point: opie-sniff)
   resources/          config.example.json, launchd plist template
-packaging/            build Opie.app + .pkg/.dmg macOS installers
+install.sh            the one-line installer (curl | bash)
+uninstall.sh          the one-line uninstaller
 tests/test_parser.py  offline tests (no hardware)
 docs/OSC_REFERENCE.md the Eos OSC commands + console setup
 shortcuts/SHORTCUT_SETUP.md  build the iPhone Shortcut
-bootstrap.sh          one-paste curl|bash installer (clone + run, no Gatekeeper)
-install.command / uninstall.command   double-click installers (clone path)
-.github/workflows/    CI tests + macOS installer builds
+.github/workflows/    CI (runs the test suite)
 ```
 
 No external dependencies — everything is Python standard library.
