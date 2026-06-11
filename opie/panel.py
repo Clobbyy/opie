@@ -115,20 +115,32 @@ class Controller:
         except OSError:
             pass
 
+    @staticmethod
+    def _relay_pids():
+        """PIDs of EVERY running relay (`python -m opie`, not the panel),
+        however it was started — pidfile, launchd, or an orphan left behind by
+        an old install. A stale second relay shadow-binding the HTTP port is
+        exactly the 'old relay still running in the background' bug."""
+        try:
+            r = subprocess.run(["pgrep", "-f", r"[Pp]ython[^ ]* -m opie($| )"],
+                               capture_output=True, text=True)
+            return [int(p) for p in r.stdout.split() if p.strip().isdigit()]
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return []
+
     def _kill(self):
-        pid = None
+        pids = set(self._relay_pids())
         try:
             with open(self._pidfile()) as f:
-                pid = int(f.read().strip())
+                pids.add(int(f.read().strip()))
         except (OSError, ValueError):
-            pid = None
-        if pid:
+            pass
+        pids.discard(os.getpid())
+        for pid in pids:
             for sig in (signal.SIGTERM, signal.SIGKILL):
                 try:
                     os.kill(pid, sig)
-                except ProcessLookupError:
-                    break
-                except OSError:
+                except OSError:  # already gone (or not ours)
                     break
                 time.sleep(0.4)
                 if not self._pid_alive(pid):
@@ -202,12 +214,43 @@ class Controller:
             raise ValueError(f"unknown action: {action}")
 
     # ---- status / info ----
+    def _hosts(self, cfg=None):
+        """Where the relay might be listening: loopback first (covers the
+        0.0.0.0 and fallback cases), then the configured bind address (covers a
+        relay bound ONLY to e.g. the Tailscale IP, which loopback can't see)."""
+        hosts = ["127.0.0.1"]
+        cfg = cfg or self.load()
+        bind = str(cfg.get("BIND_ADDR", "")).strip()
+        if bind and bind not in ("0.0.0.0", "::", "127.0.0.1", "localhost"):
+            hosts.append(bind)
+        return hosts
+
     def _health(self, port, timeout=0.6):
-        try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=timeout) as r:
-                return r.status == 200 and r.read().decode("utf-8", "replace").strip() == "ok"
-        except Exception:  # noqa: BLE001
-            return False
+        for host in self._hosts():
+            try:
+                with urllib.request.urlopen(f"http://{host}:{port}/health",
+                                            timeout=timeout) as r:
+                    if (r.status == 200
+                            and r.read().decode("utf-8", "replace").strip() == "ok"):
+                        return True
+            except Exception:  # noqa: BLE001
+                continue
+        return False
+
+    def relay_info(self, port=None):
+        """What the RUNNING relay reports about itself via /version — {} if it's
+        unreachable or predates the endpoint. The code on disk may be newer than
+        what the relay loaded at startup; callers compare the two."""
+        port = port or self._port()
+        for host in self._hosts():
+            try:
+                with urllib.request.urlopen(f"http://{host}:{port}/version",
+                                            timeout=0.6) as r:
+                    if r.status == 200:
+                        return json.loads(r.read().decode("utf-8", "replace"))
+            except Exception:  # noqa: BLE001
+                continue
+        return {}
 
     def status(self):
         cfg = self.load()
@@ -219,6 +262,7 @@ class Controller:
             "autostart": service.is_loaded(),
             "version": __version__,
             "revision": opie_update.current_revision() or "",
+            "relay_revision": self.relay_info(port).get("revision", ""),
             "port": port,
             "nomad_ip": cfg.get("NOMAD_IP", ""),
             "eos_port": cfg.get("EOS_RX_PORT", 8000),
@@ -230,16 +274,19 @@ class Controller:
         cfg = self.load()
         port = int(cfg.get("HTTP_PORT", 8765))
         token = str(cfg.get("TOKEN", ""))
-        try:
-            req = urllib.request.Request(
-                f"http://127.0.0.1:{port}/command", data=phrase.encode("utf-8"),
-                headers={"X-Token": token, "Content-Type": "text/plain"})
-            with urllib.request.urlopen(req, timeout=3) as r:
-                return r.status, r.read().decode("utf-8", "replace")
-        except urllib.error.HTTPError as e:
-            return e.code, e.read().decode("utf-8", "replace")
-        except Exception as e:  # noqa: BLE001
-            return 0, f"{e}  (is the relay running?)"
+        last = ""
+        for host in self._hosts(cfg):
+            try:
+                req = urllib.request.Request(
+                    f"http://{host}:{port}/command", data=phrase.encode("utf-8"),
+                    headers={"X-Token": token, "Content-Type": "text/plain"})
+                with urllib.request.urlopen(req, timeout=3) as r:
+                    return r.status, r.read().decode("utf-8", "replace")
+            except urllib.error.HTTPError as e:
+                return e.code, e.read().decode("utf-8", "replace")
+            except Exception as e:  # noqa: BLE001
+                last = str(e)
+        return 0, f"{last}  (is the relay running?)"
 
     def ping(self, ip):
         try:
@@ -345,6 +392,17 @@ def make_handler(ctrl):
                     status, msg = opie_update.check_and_update()
                     if status == opie_update.UPDATED:
                         ctrl.control("restart")
+                    elif status == opie_update.CURRENT:
+                        # The code on disk can already be newer than what the
+                        # running relay loaded at startup ("updating from the
+                        # GUI didn't work" = this case) — restart to apply it.
+                        src = opie_update.current_revision() or ""
+                        run = ctrl.relay_info().get("revision", "")
+                        if src and run and src != run:
+                            ctrl.control("restart")
+                            status = opie_update.UPDATED
+                            msg = (f"Restarted the relay onto {src} "
+                                   f"(it was still running {run}).")
                     self._json({"status": status, "message": msg})
                 else:
                     self._json({"error": "not found"}, 404)
@@ -560,7 +618,10 @@ async function refresh(){
   const s=d.status;
   $('dot').className='dot'+(s.running?' on':'');
   $('status').textContent=(s.running?'Running':'Stopped')+(s.autostart?' · autostart on':'');
-  $('ver').textContent='Opie '+s.version+(s.revision?(' · '+s.revision):'');
+  let ver='Opie '+s.version+(s.revision?(' · '+s.revision):'');
+  if(s.running && s.relay_revision && s.revision && s.relay_revision!==s.revision)
+    ver+=' · relay still on '+s.relay_revision+' — click “Check for updates” to apply';
+  $('ver').textContent=ver;
   $('url').textContent='Relay: http://localhost:'+s.port+'  →  OSC '+(s.nomad_ip||'?')+':'+s.eos_port;
   $('purl').textContent=s.phone_url; $('ptok').textContent=s.token;
   $('autostart').checked=s.autostart;
