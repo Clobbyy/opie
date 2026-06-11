@@ -27,6 +27,7 @@ Endpoints:
 """
 
 import argparse
+import errno
 import hmac
 import json
 import logging
@@ -34,9 +35,11 @@ import os
 import socket
 import sys
 import threading
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
+from . import __version__
 from . import config as opie_config
 from . import osclib
 from . import parser as nlparser
@@ -184,9 +187,10 @@ class Relay:
                      osclib.format_message(address, args))
 
 
-def make_handler(relay):
+def make_handler(relay, run_info=None):
     cfg = relay.config
     token = str(cfg.get("TOKEN", ""))
+    run_info = run_info or {}
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -213,6 +217,10 @@ def make_handler(relay):
             path = urlparse(self.path).path
             if path == "/health":
                 self._reply(200, "ok")
+            elif path == "/version":
+                # What THIS process is running (captured at startup) — the code
+                # on disk may already be newer; the panel compares the two.
+                self._reply(200, json.dumps(run_info))
             elif path == "/":
                 self._reply(200, "ETC Nomad voice relay is running. POST a phrase "
                                  "to /command with header X-Token.")
@@ -306,16 +314,49 @@ def main():
     relay = Relay(cfg)
     port = int(cfg["HTTP_PORT"])
     bind = cfg["BIND_ADDR"]
+    run_info = {"version": __version__,
+                "revision": opie_update.current_revision() or ""}
+    handler = make_handler(relay, run_info)
+
+    def _other_relay_serving(host):
+        """True if a relay already answers /health on host:port."""
+        host = host if host and host not in ("0.0.0.0", "::") else "127.0.0.1"
+        try:
+            with urllib.request.urlopen(f"http://{host}:{port}/health",
+                                        timeout=1.5) as r:
+                return (r.status == 200
+                        and r.read().decode("utf-8", "replace").strip() == "ok")
+        except Exception:  # noqa: BLE001
+            return False
+
     try:
-        server = ThreadingHTTPServer((bind, port), make_handler(relay))
+        server = ThreadingHTTPServer((bind, port), handler)
     except OSError as e:
-        # e.g. the BIND_ADDR hostname can't be resolved yet (Tailscale/MagicDNS
-        # not up at boot) -> don't die, listen on all interfaces instead.
+        if e.errno == errno.EADDRINUSE:
+            # The port is taken. If the holder is a relay, do NOT shadow-bind
+            # 0.0.0.0 next to it (SO_REUSEADDR allows it on macOS, and then the
+            # phone and the panel each talk to a DIFFERENT relay) — there must
+            # be exactly one instance, so leave the running one alone.
+            if _other_relay_serving(bind):
+                log.warning("another relay already serves port %d — exiting so "
+                            "only one instance runs", port)
+                return
+            raise
+        # e.g. the BIND_ADDR hostname can't be resolved, or its IP isn't
+        # assigned yet (Tailscale not up at boot) -> listen on all interfaces.
         log.warning("could not bind to %r (%s) — falling back to 0.0.0.0", bind, e)
         bind = "0.0.0.0"
-        server = ThreadingHTTPServer((bind, port), make_handler(relay))
-    log.info("relay listening on http://%s:%d  ->  OSC %s:%d  (Eos user %s)",
-             bind, port, cfg["NOMAD_IP"], int(cfg["EOS_RX_PORT"]), relay.osc_user)
+        try:
+            server = ThreadingHTTPServer((bind, port), handler)
+        except OSError as e2:
+            if e2.errno == errno.EADDRINUSE and _other_relay_serving(bind):
+                log.warning("another relay already serves port %d — exiting so "
+                            "only one instance runs", port)
+                return
+            raise
+    log.info("relay listening on http://%s:%d  ->  OSC %s:%d  (Eos user %s, %s)",
+             bind, port, cfg["NOMAD_IP"], int(cfg["EOS_RX_PORT"]), relay.osc_user,
+             run_info["revision"] or "unknown rev")
 
     # Auto-update runs in the BACKGROUND so a slow `git fetch` never delays (or
     # blocks) the relay from coming up. If a newer commit is found it fast-forwards
