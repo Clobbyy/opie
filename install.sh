@@ -112,7 +112,11 @@ try:
 except Exception:
     pass
 from opie.panel import Controller
-Controller(sys.argv[1]).ensure_running()
+# RESTART, not ensure_running: a relay from a previous install may be healthy
+# but running old code — installing must always land you on the fresh code.
+ctl = Controller(sys.argv[1])
+ctl.control("restart")
+ctl.wait_healthy(6)
 PYEOF
 sleep 2
 if curl -fsS "http://localhost:$PORT/health" >/dev/null 2>&1; then
