@@ -43,6 +43,15 @@ All notable changes to Opie are documented here. This project uses
   degrades gracefully instead of raising.
 
 ### Fixed
+- **"Go to cue" (and friends) now survive Siri's dictation quirks.** Dictation rarely
+  produces the literal word "cue" — it writes `Q`, `que`, `queue`, or glues the number on
+  (`Q10`), and sprinkles punctuation. All phrases are now normalized before matching:
+  `Q/que/queue/Q10` → `cue`, `go 2 cue 5` → `go to cue 5`, number homophones after a
+  target word (`cue to/for/won/ate` → `cue 2/4/1/8`), comma lists (`channels 1, 3 and 5`),
+  `1-8`/`threw` → `thru`, `@` → `at`, `75%`, `snake` → `sneak`, `micro` → `macro`,
+  `black out` → `blackout`, `sub master` → `submaster`, `high/low light`,
+  `ram/rim dim` → `rem dim`, glued target numbers (`channel5`), and trailing
+  punctuation/`please` are ignored.
 - **Voice commands no longer interfere with other software cueing the console.** Eos runs
   un-scoped OSC from every sender on the *same* command line and selection, so the relay's
   traffic could interleave with — and corrupt — network cues sent by QLab, sound desks, etc.
