@@ -43,6 +43,14 @@ All notable changes to Opie are documented here. This project uses
   degrades gracefully instead of raising.
 
 ### Fixed
+- **Updates now reach the panel itself, and the freshest launch always wins.**
+  The panel process used to live forever: "Check for updates" replaced the code on
+  disk and restarted the relay, but the panel kept running old code in memory —
+  so its (old) restart logic couldn't kill old relays, and reopening the Opie app
+  just surrendered to the stale panel ("port already in use"). Now the panel
+  re-execs itself onto the new code after an update, opening the Opie app replaces
+  a previous panel instance instead of deferring to it, and the installer restarts
+  (not merely "ensures") the relay so a reinstall always lands on fresh code.
 - **Stop and the status dot now use ground truth: who holds the relay port.**
   HTTP probes can miss a relay bound only to the Tailscale IP, and process-name
   sweeps can miss relays from old installs — so the GUI could say "stopped" while

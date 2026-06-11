@@ -38,6 +38,49 @@ PANEL_HOST = "127.0.0.1"
 DEFAULT_PANEL_PORT = 8766
 POLICIES = ["block_all", "record_update", "allow_all"]
 
+# The revision THIS panel process loaded. After an update pulls new code onto
+# disk, the running process is stale — it must re-exec to actually apply it.
+_RUN_REVISION = opie_update.current_revision()
+
+
+def _reexec_panel():
+    """Replace this process with a fresh panel running the code now on disk."""
+    args = list(sys.argv[1:])
+    if "--no-browser" not in args:
+        args.append("--no-browser")  # the user's existing tab reconnects itself
+    os.execv(sys.executable, [sys.executable, "-m", "opie.panel", *args])
+
+
+def _kill_other_panel(port):
+    """
+    Kill a previous panel instance holding the panel port. The freshest launch
+    wins: a long-lived panel keeps running OLD code through every update, and
+    'open Opie' must always serve the code that's actually installed. Only
+    processes recognizably running the Opie panel are touched.
+    """
+    try:
+        r = subprocess.run(["lsof", "-t", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"],
+                           capture_output=True, text=True, timeout=5)
+        pids = [int(p) for p in r.stdout.split() if p.strip().isdigit()]
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return False
+    killed = False
+    for pid in pids:
+        if pid == os.getpid():
+            continue
+        try:
+            cmd = subprocess.run(["ps", "-o", "command=", "-p", str(pid)],
+                                 capture_output=True, text=True, timeout=5).stdout
+        except (OSError, subprocess.SubprocessError):
+            cmd = ""
+        if "opie.panel" in cmd or "opie-panel" in cmd:
+            try:
+                os.kill(pid, signal.SIGTERM)
+                killed = True
+            except OSError:
+                pass
+    return killed
+
 # Config keys the panel lets you edit (everything else is preserved untouched).
 _TEXT_KEYS = ("NOMAD_IP", "EOS_RX_PORT", "HTTP_PORT", "BIND_ADDR", "LOG_FILE", "TOKEN",
               "OSC_USER")
@@ -444,6 +487,13 @@ def make_handler(ctrl):
                             status = opie_update.UPDATED
                             msg = (f"Restarted the relay onto {src} "
                                    f"(it was still running {run}).")
+                    # The panel process itself may be older than the code now on
+                    # disk — re-exec into it once this response has gone out, or
+                    # the NEXT update would still be handled by stale code.
+                    disk = opie_update.current_revision()
+                    if disk and _RUN_REVISION and disk != _RUN_REVISION:
+                        msg += "  Reloading the control panel onto the new code…"
+                        threading.Timer(0.8, _reexec_panel).start()
                     self._json({"status": status, "message": msg})
                 else:
                     self._json({"error": "not found"}, 404)
@@ -480,11 +530,20 @@ def main():
     try:
         server = ThreadingHTTPServer((PANEL_HOST, args.port), make_handler(ctrl))
     except OSError:
-        # Panel already running on this port — just bring its tab up.
-        print(f"Opie Control is already running at {url}")
-        if not args.no_browser:
-            _open(url)
-        return 0
+        # A previous panel holds the port — replace it (it may be running old
+        # code; the freshest launch must win) and retry once.
+        server = None
+        if _kill_other_panel(args.port):
+            time.sleep(0.8)
+            try:
+                server = ThreadingHTTPServer((PANEL_HOST, args.port), make_handler(ctrl))
+            except OSError:
+                server = None
+        if server is None:
+            print(f"Opie Control is already running at {url}")
+            if not args.no_browser:
+                _open(url)
+            return 0
 
     # Opening Opie should make it work: bring the relay up if it isn't already.
     threading.Thread(target=ctrl.ensure_running, daemon=True).start()
