@@ -40,6 +40,7 @@ from urllib.parse import urlparse, parse_qs
 from . import config as opie_config
 from . import osclib
 from . import parser as nlparser
+from . import service as opie_service
 from . import update as opie_update
 
 DEFAULT_CONFIG = {
@@ -320,6 +321,13 @@ def main():
     # blocks) the relay from coming up. If a newer commit is found it fast-forwards
     # and re-execs into it (a brief blip), otherwise it's a no-op. Best-effort.
     def _bg_update():
+        # Keep the clickable Opie.app current FIRST (before a possible execv):
+        # an outdated launcher otherwise survives code updates and breaks the
+        # control panel when the entry point changes.
+        try:
+            opie_service.ensure_app_launcher()
+        except Exception as e:  # noqa: BLE001
+            log.warning("could not refresh Opie.app launcher: %s", e)
         try:
             opie_update.self_update_and_reexec(cfg)  # may execv (replaces process)
         except Exception as e:  # noqa: BLE001
