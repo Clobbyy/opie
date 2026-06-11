@@ -7,8 +7,10 @@ at login and keeps it alive. The plist is rendered from a bundled template so it
 points at the right Python (the venv), the user's config, and a log file.
 """
 
+import hashlib
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 
@@ -175,9 +177,14 @@ _APP_PLIST = """<?xml version="1.0" encoding="UTF-8"?>
   <key>CFBundleDisplayName</key><string>Opie</string>
   <key>CFBundleIdentifier</key><string>com.opie.control</string>
   <key>CFBundleExecutable</key><string>Opie</string>
+  <key>CFBundleIconFile</key><string>Opie</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>{VERSION}</string>
   <key>NSHighResolutionCapable</key><true/>
+  <!-- The native shell loads the panel over http://127.0.0.1 — allow loopback
+       (ATS blocks plain http by default, which would leave a blank window). -->
+  <key>NSAppTransportSecurity</key>
+  <dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict></plist>
 """
 
@@ -196,13 +203,142 @@ def _write_if_changed(path, content, mode=None):
     return True
 
 
+def _swift_source_path() -> str:
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "resources", "OpieApp.swift")
+
+
+def _icon_source_path() -> str:
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        "resources", "Opie.icns")
+
+
+def _find_swiftc():
+    """Path to swiftc from the active toolchain (Command Line Tools), or None."""
+    try:
+        r = subprocess.run(["xcrun", "-f", "swiftc"],
+                           capture_output=True, text=True, timeout=10)
+        p = r.stdout.strip()
+        if r.returncode == 0 and p and os.path.exists(p):
+            return p
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return shutil.which("swiftc")
+
+
+# Mach-O magic numbers (thin + universal, both byte orders).
+_MACHO_MAGIC = {b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe",
+                b"\xfe\xed\xfa\xcf", b"\xfe\xed\xfa\xce",
+                b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca"}
+
+
+def _is_macho(path) -> bool:
+    try:
+        with open(path, "rb") as f:
+            return f.read(4) in _MACHO_MAGIC
+    except OSError:
+        return False
+
+
+def _read_text(path) -> str:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def _install_icon(res_dir):
+    """Copy the bundled .icns into the app's Resources (idempotent, best-effort)."""
+    src = _icon_source_path()
+    if not os.path.exists(src):
+        return
+    try:
+        with open(src, "rb") as f:
+            data = f.read()
+    except OSError:
+        return
+    dst = os.path.join(res_dir, "Opie.icns")
+    try:
+        with open(dst, "rb") as f:
+            if f.read() == data:
+                return
+    except OSError:
+        pass
+    try:
+        with open(dst, "wb") as f:
+            f.write(data)
+    except OSError:
+        pass
+
+
+def _build_native_app(macos_dir) -> bool:
+    """
+    Compile the native WKWebView shell (resources/OpieApp.swift) into
+    Contents/MacOS/Opie with swiftc from the Command Line Tools. Returns True on
+    success, False if swiftc is missing or the build fails (caller then writes the
+    bash fallback launcher).
+
+    A content hash gates the compile so it only runs when the Swift source or the
+    toolchain changed, or the binary is missing — ensure_app_launcher() is called
+    on every relay/panel start, so an unconditional compile would be wasteful.
+    Compiled locally => the binary is never quarantined => no Gatekeeper prompt
+    and no code signing required.
+    """
+    swiftc = _find_swiftc()
+    if not swiftc:
+        return False
+    src = _read_text(_swift_source_path())
+    if not src:
+        return False
+    bin_path = os.path.join(macos_dir, "Opie")
+    stamp_path = os.path.join(macos_dir, ".opie_build")
+    stamp = hashlib.sha256(("v1\x00" + swiftc + "\x00" + src).encode("utf-8")).hexdigest()
+    if _is_macho(bin_path) and _read_text(stamp_path).strip() == stamp:
+        return True  # already built from this exact source + toolchain
+    build_dir = os.path.join(opie_config.app_support_dir(), "build")
+    try:
+        os.makedirs(build_dir, exist_ok=True)
+        # swiftc only allows top-level statements in a file named main.swift.
+        swift_file = os.path.join(build_dir, "main.swift")
+        with open(swift_file, "w", encoding="utf-8") as f:
+            f.write(src)
+        out_tmp = os.path.join(build_dir, f"Opie.{os.getpid()}.bin")
+        r = subprocess.run(
+            [swiftc, "-o", out_tmp, swift_file,
+             "-framework", "Cocoa", "-framework", "WebKit"],
+            capture_output=True, text=True, timeout=180)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    if r.returncode != 0 or not _is_macho(out_tmp):
+        try:
+            os.remove(out_tmp)
+        except OSError:
+            pass
+        return False
+    try:
+        os.replace(out_tmp, bin_path)
+        os.chmod(bin_path, 0o755)
+        with open(stamp_path, "w", encoding="utf-8") as f:
+            f.write(stamp)
+    except OSError:
+        return False
+    return True
+
+
 def ensure_app_launcher():
     """
-    (Re)write ~/Applications/Opie.app so the launcher always matches the code
-    that's actually installed. install.sh creates the .app once; this keeps it
-    current across auto-updates. Only acts on macOS and only when the .app
-    already exists or Opie runs from a recorded install root (the one-line
-    installer); pip users who never had the app don't get one foisted on them.
+    (Re)write ~/Applications/Opie.app so it always matches the installed code.
+
+    Prefers a native compiled window (resources/OpieApp.swift -> a WKWebView
+    hosting the control panel, with a menu-bar item for Start/Stop/Restart). If
+    swiftc is unavailable or the build fails, falls back to a bash launcher that
+    opens the panel in the default browser — either way the app always works.
+
+    install.sh creates the .app once; this keeps it current across auto-updates.
+    Only acts on macOS and only when the .app already exists or Opie runs from a
+    recorded install root (the one-line installer); pip users who never had the
+    app don't get one foisted on them.
     """
     if sys.platform != "darwin":
         return None
@@ -211,11 +347,22 @@ def ensure_app_launcher():
     if not root and not os.path.isdir(app):
         return None
     macos_dir = os.path.join(app, "Contents", "MacOS")
+    res_dir = os.path.join(app, "Contents", "Resources")
     os.makedirs(macos_dir, exist_ok=True)
-    py_line = f"export PYTHONPATH={shlex.quote(root)}\n" if root else ""
-    _write_if_changed(os.path.join(macos_dir, "Opie"),
-                      _APP_LAUNCHER.replace("{PYTHONPATH_LINE}", py_line),
-                      mode=0o755)
+    os.makedirs(res_dir, exist_ok=True)
+
+    _install_icon(res_dir)
     _write_if_changed(os.path.join(app, "Contents", "Info.plist"),
                       _APP_PLIST.replace("{VERSION}", __version__))
+
+    if not _build_native_app(macos_dir):
+        # Fallback: the browser launcher (still zero-dependency, always works).
+        py_line = f"export PYTHONPATH={shlex.quote(root)}\n" if root else ""
+        _write_if_changed(os.path.join(macos_dir, "Opie"),
+                          _APP_LAUNCHER.replace("{PYTHONPATH_LINE}", py_line),
+                          mode=0o755)
+        try:  # drop a stale stamp so a later run with swiftc rebuilds cleanly
+            os.remove(os.path.join(macos_dir, ".opie_build"))
+        except OSError:
+            pass
     return app

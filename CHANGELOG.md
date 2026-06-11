@@ -17,6 +17,12 @@ All notable changes to Opie are documented here. This project uses
   reachability, phone-setup info, and update checks. Opening the **Opie** app brings the
   relay up automatically and opens the panel; Start/Restart report failures with the
   relay's actual error.
+- **Native Mac app window.** Opening **Opie** now launches a real app window — a compiled
+  Swift + WKWebView shell hosting the control panel, with a menu-bar item for
+  Start/Stop/Restart and a proper app icon — instead of a browser tab. It's compiled
+  locally at install time using the Command Line Tools that `git` already requires, so it
+  keeps the zero-dependency, no-Gatekeeper model (no code signing, no pip). If `swiftc`
+  isn't available it falls back automatically to opening the panel in your default browser.
 - **Automatic updates.** When Opie runs from a Git clone it keeps itself current — the
   relay fast-forwards and re-execs into the latest code (in the background, so it never
   delays startup), plus a **Check for updates** button and an **Auto-update** toggle. New
