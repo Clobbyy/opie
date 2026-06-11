@@ -14,5 +14,6 @@
     "stop_back": "stop_back_main_cuelist"
   },
   "destructive_policy": "record_update",
+  "OSC_USER": 0,
   "auto_update": true
 }

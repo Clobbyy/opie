@@ -39,8 +39,9 @@ DEFAULT_PANEL_PORT = 8766
 POLICIES = ["block_all", "record_update", "allow_all"]
 
 # Config keys the panel lets you edit (everything else is preserved untouched).
-_TEXT_KEYS = ("NOMAD_IP", "EOS_RX_PORT", "HTTP_PORT", "BIND_ADDR", "LOG_FILE", "TOKEN")
-_INT_KEYS = ("EOS_RX_PORT", "HTTP_PORT")
+_TEXT_KEYS = ("NOMAD_IP", "EOS_RX_PORT", "HTTP_PORT", "BIND_ADDR", "LOG_FILE", "TOKEN",
+              "OSC_USER")
+_INT_KEYS = ("EOS_RX_PORT", "HTTP_PORT", "OSC_USER")
 
 
 class Controller:
@@ -291,6 +292,7 @@ def make_handler(ctrl):
             elif p.path == "/api/state":
                 cfg = ctrl.load()
                 editable = {k: cfg.get(k, "") for k in _TEXT_KEYS}
+                editable["OSC_USER"] = cfg.get("OSC_USER", 0)
                 editable["destructive_policy"] = cfg.get("destructive_policy", "record_update")
                 editable["auto_update"] = bool(cfg.get("auto_update", True))
                 editable["macro_map"] = cfg.get("macro_map", {})
@@ -475,8 +477,13 @@ PAGE = """<!doctype html>
     <label>Log file (blank = default)</label><input id="LOG_FILE">
     <div class="row">
       <div><label>Destructive policy</label><select id="destructive_policy"></select></div>
+      <div><label>Eos OSC user <span class="muted">(0 = background)</span></label><input id="OSC_USER"></div>
       <div><label>&nbsp;</label><label style="font-weight:500"><input type="checkbox" id="auto_update" style="width:auto"> Auto-update</label></div>
     </div>
+    <p class="note muted" style="margin:4px 0 0">Voice commands run as their own Eos user so they
+      never collide with cues other software (QLab, sound desks, …) sends to the console.
+      <code>0</code> = the invisible background user · a positive number = that user's command line ·
+      <code>-1</code> = share the console's OSC user (old behaviour).</p>
     <label>Shared token <span class="muted">(the iPhone Shortcut sends this)</span></label>
     <div class="bar">
       <input id="TOKEN" class="grow">
@@ -541,7 +548,7 @@ async function refresh(){
   $('autostart').checked=s.autostart;
   if(!loaded){ // fill the form once so we don't clobber edits
     const c=d.config;
-    for(const k of ['NOMAD_IP','EOS_RX_PORT','HTTP_PORT','BIND_ADDR','LOG_FILE','TOKEN']) $(k).value=c[k]??'';
+    for(const k of ['NOMAD_IP','EOS_RX_PORT','HTTP_PORT','BIND_ADDR','LOG_FILE','TOKEN','OSC_USER']) $(k).value=c[k]??'';
     const sel=$('destructive_policy'); sel.innerHTML='';
     for(const p of d.policies){ const o=document.createElement('option'); o.value=o.textContent=p; if(p===c.destructive_policy)o.selected=true; sel.appendChild(o); }
     $('auto_update').checked=!!c.auto_update;
@@ -556,7 +563,7 @@ async function save(restart){
   catch(e){ $('saved').className='err'; $('saved').textContent='Macro/Key map must be valid JSON'; return; }
   const cfg={ destructive_policy:$('destructive_policy').value, auto_update:$('auto_update').checked,
               macro_map:macro, key_map:key, restart:restart };
-  for(const k of ['NOMAD_IP','EOS_RX_PORT','HTTP_PORT','BIND_ADDR','LOG_FILE','TOKEN']) cfg[k]=$(k).value;
+  for(const k of ['NOMAD_IP','EOS_RX_PORT','HTTP_PORT','BIND_ADDR','LOG_FILE','TOKEN','OSC_USER']) cfg[k]=$(k).value;
   const r=await api('/api/config',{method:'POST',body:JSON.stringify(cfg)});
   $('saved').className='ok'; $('saved').textContent=r.ok?(restart?'Saved & restarting…':'Saved.'):(r.error||'Error');
   setTimeout(()=>$('saved').textContent='',2500);

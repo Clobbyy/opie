@@ -41,11 +41,29 @@ Action-style addresses (e.g. `.../full`) are sent **with no argument**.
   (execute). Supports `%1 %2` substitution with trailing args.
 - `/eos/newcmd "<text>"` — same, but clears the command line first.
 
-The relay uses `/eos/cmd` for **ranges, lists, relative levels**, **action verbs**
-(Sneak, Mark, Rem_Dim, …), and as a **fallback** for any phrase that names a known
-Eos keyword but doesn't match a dedicated rule — which is what makes the *entire*
-Eos command set reachable by voice. The relay **blocks** any `/eos/cmd` string
-containing destructive verbs (Delete, Wipe, Patch, …) per the `destructive_policy`.
+The relay uses the command line for **ranges, lists, relative levels**, **action
+verbs** (Sneak, Mark, Rem_Dim, …), and as a **fallback** for any phrase that names
+a known Eos keyword but doesn't match a dedicated rule — which is what makes the
+*entire* Eos command set reachable by voice. The relay **blocks** any command-line
+string containing destructive verbs (Delete, Wipe, Patch, …) per the
+`destructive_policy`. On the wire it sends `/eos/user/<n>/newcmd` (see the next
+section) so each command starts on a clean line and can't collide with anyone else.
+
+### User scoping — playing nicely with other OSC senders
+Eos runs un-scoped OSC input from **every** sender on the **same** command line and
+selection (the console's OSC user). If two systems send at once — this relay plus
+e.g. QLab network cues or a sound desk — their text interleaves and both get
+corrupted commands. Almost every input address can instead be prefixed with
+`/eos/user/<number>/` to run it as a specific user with its **own** command line.
+
+The relay therefore sends everything scoped to `config["OSC_USER"]`:
+- `0` *(default)* — Eos's invisible **background user** (the context background
+  macros run in). Voice never appears on, or disturbs, anyone's command line.
+- a positive number — that user's command line (visible if a display follows it).
+- `-1` — legacy behaviour: un-scoped, shared with other OSC senders.
+
+The only message the relay leaves un-scoped is `/eos/ping`, which has no `/user`
+form.
 
 ### Channels
 - `/eos/chan/<n> = <0–100>` — set intensity
@@ -110,9 +128,11 @@ prefix:
 | `blackout` (your macro-mapped word) | fires the mapped console macro |
 | `command <anything>` | raw command-line passthrough |
 
-Action verbs and bare parameters are typed onto the Eos command line, so they act
-on whatever channels are **currently selected** on the console (just like typing
-them on the console's keypad).
+Action verbs and bare parameters are typed onto the **relay's own** Eos command
+line (see *User scoping* above), so they act on whatever channels were **last
+selected by voice** — e.g. "channel 5 at 50" then "gobo 3" chains as expected.
+With `OSC_USER: -1` they instead share the console's OSC user and act on its
+selection — at the cost of interfering with other OSC senders.
 
 ## Notes / gotchas
 - **Key names** (`go_0`, `stop_back_main_cuelist`) can vary by console

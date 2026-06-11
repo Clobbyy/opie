@@ -59,6 +59,13 @@ DEFAULT_CONFIG = {
     #   "record_update" - allow Record/Update/Store; block Delete/Wipe/Patch (default)
     #   "allow_all"     - true full control, including Delete/Wipe/Patch
     "destructive_policy": "record_update",
+    # Which Eos user voice commands execute as. Un-scoped OSC runs on the
+    # console's ONE shared OSC command line, where it interleaves with (and can
+    # corrupt) cues sent by other software (QLab network cues, sound desks, ...).
+    #   0  - Eos's invisible "background" user (recommended, default)
+    #   N  - run on user N's own command line (visible if a display follows it)
+    #   -1 - legacy: share the console's default OSC user
+    "OSC_USER": 0,
     # Keep Opie current automatically by fast-forwarding the Git clone it runs
     # from (no effect on pip installs or downloaded ZIPs). See opie/update.py.
     "auto_update": True,
@@ -130,14 +137,46 @@ def filter_messages(messages, policy):
     return safe, rejected
 
 
+def scope_messages(messages, osc_user):
+    """
+    Rewrite outgoing addresses to execute as a dedicated Eos user
+    (/eos/... -> /eos/user/<n>/...) instead of on the console's shared OSC
+    command line, and upgrade /eos/cmd to /eos/newcmd (clears the line before
+    typing) so a leftover half-typed command can never merge with the next one.
+
+    Eos runs un-scoped OSC from every UDP sender on the same command line and
+    selection, so voice traffic would interleave with — and corrupt — cues sent
+    by other software. User 0 is Eos's background user (the context background
+    macros run in). osc_user < 0 keeps the legacy shared behaviour. /eos/ping
+    is left untouched: it's one of the few inputs without a /user form.
+    """
+    try:
+        user = int(osc_user)
+    except (TypeError, ValueError):
+        user = 0
+    if user < 0:
+        return list(messages)
+    scoped = []
+    for address, args in messages:
+        if address == "/eos/cmd":
+            address = "/eos/newcmd"
+        if (address.startswith("/eos/")
+                and not address.startswith("/eos/ping")
+                and not address.startswith("/eos/user/")):
+            address = f"/eos/user/{user}/" + address[len("/eos/"):]
+        scoped.append((address, args))
+    return scoped
+
+
 class Relay:
     def __init__(self, config):
         self.config = config
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.dest = (config["NOMAD_IP"], int(config["EOS_RX_PORT"]))
+        self.osc_user = config.get("OSC_USER", DEFAULT_CONFIG["OSC_USER"])
 
     def send(self, messages):
-        for address, args in messages:
+        for address, args in scope_messages(messages, self.osc_user):
             raw = osclib.encode(address, args)
             self.sock.sendto(raw, self.dest)
             log.info("OSC -> %s:%d  %s", self.dest[0], self.dest[1],
@@ -274,8 +313,8 @@ def main():
         log.warning("could not bind to %r (%s) — falling back to 0.0.0.0", bind, e)
         bind = "0.0.0.0"
         server = ThreadingHTTPServer((bind, port), make_handler(relay))
-    log.info("relay listening on http://%s:%d  ->  OSC %s:%d",
-             bind, port, cfg["NOMAD_IP"], int(cfg["EOS_RX_PORT"]))
+    log.info("relay listening on http://%s:%d  ->  OSC %s:%d  (Eos user %s)",
+             bind, port, cfg["NOMAD_IP"], int(cfg["EOS_RX_PORT"]), relay.osc_user)
 
     # Auto-update runs in the BACKGROUND so a slow `git fetch` never delays (or
     # blocks) the relay from coming up. If a newer commit is found it fast-forwards
