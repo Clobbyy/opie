@@ -43,6 +43,12 @@ All notable changes to Opie are documented here. This project uses
   degrades gracefully instead of raising.
 
 ### Fixed
+- **Harmless client-disconnect tracebacks no longer look like crashes.** Siri and
+  the panel's health poll routinely drop the socket the moment they have their reply;
+  the stdlib HTTP server turned that into a `ConnectionResetError`/`BrokenPipeError`
+  traceback that polluted the log and even surfaced inside the "Relay did not start"
+  box. These are now swallowed, and the every-few-seconds `/health` poll is no longer
+  logged — so the log shows the OSC traffic that actually matters.
 - **Updates now reach the panel itself, and the freshest launch always wins.**
   The panel process used to live forever: "Check for updates" replaced the code on
   disk and restarted the relay, but the panel kept running old code in memory —
