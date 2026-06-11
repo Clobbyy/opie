@@ -42,6 +42,18 @@ All notable changes to Opie are documented here. This project uses
   are visible (`relay.out.log`). Hardened `service` so a missing/erroring `launchctl`
   degrades gracefully instead of raising.
 
+### Fixed
+- **Voice commands no longer interfere with other software cueing the console.** Eos runs
+  un-scoped OSC from every sender on the *same* command line and selection, so the relay's
+  traffic could interleave with — and corrupt — network cues sent by QLab, sound desks, etc.
+  Everything the relay sends is now scoped to its own Eos user (`/eos/user/<n>/…`; new
+  config key `OSC_USER`, default `0` = the console's invisible background user), and
+  command-line strings use `/eos/newcmd` (clear-then-type) instead of `/eos/cmd` (append),
+  so a half-typed leftover can never merge into the next command. Set `OSC_USER` to a
+  positive number to run on a visible user, or `-1` for the old shared behaviour. Note:
+  bare commands (`full`, `sneak`, `gobo 3`) now act on the selection last made *by voice*,
+  not the operator's console selection.
+
 ## [0.1.0] — 2026-06-08
 
 First packaged release.

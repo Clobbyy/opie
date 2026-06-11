@@ -30,6 +30,27 @@ POLICY_CASES = [
     ([("/eos/key/live", [1.0])], "record_update", 1),          # normal key ok
 ]
 
+# (messages, OSC_USER, expected) for the user-scoping rewrite applied at send time
+SCOPE_CASES = [
+    # command line: scoped to the user AND upgraded to newcmd (clean line)
+    ([("/eos/cmd", ["Chan 5 At 50#"])], 0,
+     [("/eos/user/0/newcmd", ["Chan 5 At 50#"])]),
+    ([("/eos/cmd", ["Go_To_Cue 10#"])], 99,
+     [("/eos/user/99/newcmd", ["Go_To_Cue 10#"])]),
+    # keys, implicit channel commands, subs, macros: scoped untouched otherwise
+    ([("/eos/key/go_0", [1.0])], 0, [("/eos/user/0/key/go_0", [1.0])]),
+    ([("/eos/chan/5/full", [])], 0, [("/eos/user/0/chan/5/full", [])]),
+    ([("/eos/sub/4/fire", [1.0])], 0, [("/eos/user/0/sub/4/fire", [1.0])]),
+    ([("/eos/macro/901/fire", [1.0])], 0, [("/eos/user/0/macro/901/fire", [1.0])]),
+    # ping has no /user form — never rewritten
+    ([("/eos/ping", ["voice-relay"])], 0, [("/eos/ping", ["voice-relay"])]),
+    # OSC_USER = -1 -> legacy shared command line, nothing rewritten
+    ([("/eos/cmd", ["Chan 5 At 50#"])], -1, [("/eos/cmd", ["Chan 5 At 50#"])]),
+    ([("/eos/key/go_0", [1.0])], -1, [("/eos/key/go_0", [1.0])]),
+    # junk config value falls back to the safe default (user 0)
+    ([("/eos/chan/5/full", [])], "", [("/eos/user/0/chan/5/full", [])]),
+]
+
 CONFIG = {
     "macro_map": {"blackout": 901, "restore": 902, "house lights up": 903},
     "key_map": {},  # use built-in defaults (go_0 / stop_back_main_cuelist)
@@ -184,6 +205,16 @@ def main():
             failed += 1
             print(f"FAIL  policy={policy} {messages} -> {len(safe)} safe, "
                   f"expected {expected_safe}")
+
+    # user-scoping rewrite (keeps voice off the shared OSC command line)
+    for messages, osc_user, expected in SCOPE_CASES:
+        got = relay.scope_messages(messages, osc_user)
+        if _msgs_equal(got, expected):
+            passed += 1
+        else:
+            failed += 1
+            print(f"FAIL  scope user={osc_user!r} {messages} -> {got}, "
+                  f"expected {expected}")
 
     # OSC encoder round-trips
     enc_cases = [
