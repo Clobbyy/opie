@@ -77,6 +77,28 @@ OK_CASES = [
     ("jump to cue 3",                [("/eos/cmd", ["Go_To_Cue 3#"])]),
     ("go to cue 10 in list 2",       [("/eos/cmd", ["Go_To_Cue 2/10#"])]),
     ("go to queue 4",                [("/eos/cmd", ["Go_To_Cue 4#"])]),  # Siri "queue"->"cue"
+    # dictation variants: Q/que/queue, glued numbers, punctuation, homophones
+    ("Go to Q10",                    [("/eos/cmd", ["Go_To_Cue 10#"])]),
+    ("go to q 10",                   [("/eos/cmd", ["Go_To_Cue 10#"])]),
+    ("Go to que 10.5.",              [("/eos/cmd", ["Go_To_Cue 10.5#"])]),
+    ("go 2 cue 5",                   [("/eos/cmd", ["Go_To_Cue 5#"])]),
+    ("go to cue to",                 [("/eos/cmd", ["Go_To_Cue 2#"])]),  # "cue two"
+    ("go to cue 10, please",         [("/eos/cmd", ["Go_To_Cue 10#"])]),
+    ("fire q 5 in cue list 2",       [("/eos/cue/2/5/fire", [])]),
+    ("cue for",                      [("/eos/cue/4/fire", [])]),         # "cue four"
+    ("Q1 go",                        [("/eos/cue/1/fire", [])]),
+    ("channels 1, 3 and 5 at full",  [("/eos/cmd", ["Chan 1 + 3 + 5 At Full#"])]),
+    ("channels 1-8 at 75",           [("/eos/cmd", ["Chan 1 Thru 8 At 75#"])]),
+    ("channels 1 threw 8 at 75",     [("/eos/cmd", ["Chan 1 Thru 8 At 75#"])]),
+    ("channel 5 @ 50",               [("/eos/chan/5", [50.0])]),
+    ("channel5 at full",             [("/eos/chan/5/full", [])]),
+    ("75%",                          [("/eos/at", [75.0])]),
+    ("snake channel 5",              [("/eos/cmd", ["Chan 5 Sneak#"])]), # "sneak"
+    ("black out",                    [("/eos/macro/901/fire", [1.0])]),
+    ("sub master 4 at full",         [("/eos/sub/4/full", [])]),
+    ("micro 5",                      [("/eos/macro/5/fire", [1.0])]),    # "macro"
+    ("ram dim",                      [("/eos/cmd", ["Rem_Dim#"])]),      # "rem dim"
+    ("channel too at full",          [("/eos/chan/2/full", [])]),        # "channel two"
     # colors
     ("make channel 7 red",           [("/eos/chan/7/color/rgb", [1.0, 0.0, 0.0])]),
     ("group 3 red",                  [("/eos/cmd", ["Group 3 Red 100 Green 0 Blue 0#"])]),

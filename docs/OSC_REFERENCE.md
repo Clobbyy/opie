@@ -128,6 +128,16 @@ prefix:
 | `blackout` (your macro-mapped word) | fires the mapped console macro |
 | `command <anything>` | raw command-line passthrough |
 
+**Dictation tolerance** — phrases are normalized before matching, so the ways
+Siri/Shortcuts typically mangle a spoken command all parse the same:
+`Q` / `que` / `queue` / `Q10` → `cue`, `go 2 cue 5` → `go to cue 5`,
+`cue to` / `cue for` / `cue ate` / `cue won` → `cue 2 / 4 / 8 / 1` (also after
+channel/group/sub/macro/preset/address), `channels 1, 3 and 5` → a list,
+`1-8` / `threw` → `thru`, `@` → `at`, `75%` → `75 percent`, `snake` → `sneak`,
+`micro` → `macro`, `black out` → `blackout`, `sub master` → `submaster`,
+`high light` / `low light` → `highlight` / `lowlight`, `ram dim` / `rim dim` →
+`rem dim`, and trailing punctuation / `please` are ignored.
+
 Action verbs and bare parameters are typed onto the **relay's own** Eos command
 line (see *User scoping* above), so they act on whatever channels were **last
 selected by voice** — e.g. "channel 5 at 50" then "gobo 3" chains as expected.

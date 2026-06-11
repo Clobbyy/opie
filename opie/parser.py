@@ -91,6 +91,76 @@ def normalize_numbers(text: str) -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Dictation normalization                                                      #
+# --------------------------------------------------------------------------- #
+
+def normalize_dictation(raw: str) -> str:
+    """
+    Canonicalize a dictated phrase before rule matching: lowercase, strip the
+    punctuation dictation inserts, digits for number words, and map the
+    transcription variants Siri/Shortcuts produce onto the words the rules
+    expect — "Q"/"que"/"queue"/"Q10" -> "cue", "snake" -> "sneak",
+    "black out" -> "blackout", "channel to" -> "channel 2", "1-8" -> "1 thru 8".
+    """
+    text = (raw or "").lower().strip()
+
+    # -- punctuation: keep decimals ("10.5") and cue-list refs ("2/10"),
+    #    drop everything else ("Go to cue 10." / "press blind!"). Commas are
+    #    isolated as tokens first because a comma between numbers is a list
+    #    ("channels 1, 3 and 5") and must survive until after number words
+    #    are converted to digits.
+    text = re.sub(r"(\d),(\d{3})\b", r"\1\2", text)        # "1,001" -> "1001"
+    text = re.sub(r"\s*,\s*", " , ", text)
+    text = re.sub(r"[!?;:]+", " ", text)
+    text = re.sub(r"\.(?!\d)", " ", text)                  # periods except decimals
+    text = text.replace("@", " at ")                       # "channel 5 @ 50"
+    text = re.sub(r"(\d)\s*%", r"\1 percent", text)        # "75%" -> "75 percent"
+    text = re.sub(r"\b(?:please|thanks|thank you)\b", " ", text)
+
+    # -- spelled-out numbers -> digits; "10 point 5" -> "10.5"
+    text = normalize_numbers(text)
+    text = re.sub(r"(\d)\s+point\s+(\d)", r"\1.\2", text)
+
+    # -- a comma between numbers is a list connector; drop the rest
+    text = re.sub(r"(\d) , (?=\d)", r"\1 and ", text)      # "1, 3, 5" -> "1 and 3 and 5"
+    text = re.sub(r"\s*,\s*", " ", text)
+
+    # -- "cue" comes back as Q / que / queue, sometimes glued to its number
+    text = re.sub(r"\b(?:queue|que|q)\b", "cue", text)
+    text = re.sub(r"\b(?:queue|que|q|cue)\.?(?=\d)", "cue ", text)   # "Q10" -> "cue 10"
+    text = re.sub(r"\bcue ?list\b", "cuelist", text)
+    text = re.sub(r"\bgo 2 (?=cue)", "go to ", text)                 # "go 2 cue 5"
+
+    # -- number homophones right after a target word ("cue to" = "cue two");
+    #    plurals ("channels to full") are excluded by the \b word boundary
+    targets = r"\b(cue|chan|channel|group|sub|submaster|macro|preset|address)"
+    text = re.sub(targets + r"(\d)", r"\1 \2", text)       # "channel5" -> "channel 5"
+    text = re.sub(targets + r" (?:to|too)\b", r"\1 2", text)
+    text = re.sub(targets + r" (?:for|fore)\b", r"\1 4", text)
+    text = re.sub(targets + r" won\b", r"\1 1", text)
+    text = re.sub(targets + r" ate\b", r"\1 8", text)
+
+    # -- ranges: "1-8" and "threw" dictation forms
+    text = re.sub(r"(\d)\s*-\s*(\d)", r"\1 thru \2", text)
+    text = re.sub(r"\bthrew\b", "thru", text)
+
+    # -- Eos words dictation splits in two or mishears
+    text = re.sub(r"\bsnake\b", "sneak", text)
+    text = re.sub(r"\bmicro\b", "macro", text)
+    text = re.sub(r"\bblack ?out\b", "blackout", text)
+    text = re.sub(r"\bhigh light\b", "highlight", text)
+    text = re.sub(r"\blow light\b", "lowlight", text)
+    text = re.sub(r"\bsub[ -]master(s?)\b", r"submaster\1", text)
+    text = re.sub(r"\bun (park|block)\b", r"un\1", text)
+
+    # -- collapse multi-word Eos verbs into single tokens so they parse as one action
+    text = re.sub(r"\b(?:rem|ram|rim)[ _-]?dim\b", "rem_dim", text)
+    text = re.sub(r"\bmake manual\b", "make_manual", text)
+
+    return re.sub(r"\s+", " ", text).strip()
+
+
+# --------------------------------------------------------------------------- #
 # Vocabulary tables                                                            #
 # --------------------------------------------------------------------------- #
 
@@ -444,17 +514,9 @@ def parse(phrase: str, config: dict) -> ParseResult:
     if not raw:
         return ParseResult(False, "I didn't catch a command.")
 
-    # normalize: lowercase, strip punctuation, spell-out numbers, "X point Y" -> X.Y
-    text = raw.lower().strip()
-    text = re.sub(r"[.,!?;:]+$", "", text)
-    text = normalize_numbers(text)
-    text = re.sub(r"(\d)\s+point\s+(\d)", r"\1.\2", text)
-    # Siri often transcribes "cue" as "queue"/"que"/"q"
-    text = re.sub(r"\b(?:queue|que|q)\b", "cue", text)
-    # collapse multi-word Eos verbs into single tokens so they parse as one action
-    text = re.sub(r"\brem\s+dim\b", "rem_dim", text)
-    text = re.sub(r"\bmake\s+manual\b", "make_manual", text)
-    text = re.sub(r"\s+", " ", text).strip()
+    text = normalize_dictation(raw)
+    if not text:
+        return ParseResult(False, "I didn't catch a command.")
 
     macro_map = {k.lower(): v for k, v in (config.get("macro_map") or {}).items()}
     key_map = {**_DEFAULT_KEYS, **(config.get("key_map") or {})}
