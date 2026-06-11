@@ -95,7 +95,13 @@ def load():
 
 
 def unload():
-    return _launchctl("unload", "-w", plist_path())
+    # `unload` needs the plist file on disk; if it's gone while the job is
+    # still loaded, fall back to bootout by label (works from the live job) —
+    # otherwise Stop silently fails and KeepAlive resurrects the relay.
+    r = _launchctl("unload", "-w", plist_path())
+    if is_loaded():
+        r = _launchctl("bootout", f"gui/{_uid()}/{LABEL}")
+    return r
 
 
 def restart():

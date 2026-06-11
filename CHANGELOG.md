@@ -43,6 +43,11 @@ All notable changes to Opie are documented here. This project uses
   degrades gracefully instead of raising.
 
 ### Fixed
+- **Stop is verified, and works even without the launchd plist.** The Stop button
+  now confirms the relay port actually went quiet and shows an error if anything
+  still answers; `launchctl unload` falls back to `bootout` by label when the
+  plist file is missing while the job is loaded (previously that combination made
+  Stop silently fail and KeepAlive resurrected the relay).
 - **Exactly one relay, and the GUI applies updates to it.** Three related bugs:
   if the configured bind address was taken, a second relay would shadow-bind
   `0.0.0.0` next to the first (macOS `SO_REUSEADDR`), leaving the phone and the

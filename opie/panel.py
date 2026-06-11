@@ -384,6 +384,14 @@ def make_handler(ctrl):
                             resp["error"] = (ctrl.relay_log_tail()
                                              or "The relay did not start. Check that "
                                                 "python3 works and the port is free.")
+                    elif action == "stop":
+                        # Verify it actually died — a survivor here means some
+                        # process we don't know about holds the relay port.
+                        time.sleep(0.6)
+                        resp["running"] = ctrl._health(ctrl._port())
+                        if resp["running"]:
+                            resp["error"] = ("Stop failed: something still answers "
+                                             "on the relay port. Check the logs.")
                     self._json(resp)
                 elif p.path == "/api/test":
                     code, body = ctrl.test(str(data.get("phrase", "")))
@@ -655,8 +663,11 @@ async function ctl(action){
   let r;
   try{ r=await api('/api/control',{method:'POST',body:JSON.stringify({action})}); }
   catch(e){ err.textContent=PANEL_DOWN; err.style.display='block'; refresh(); return; }
-  if((action==='start'||action==='restart') && r && (r.running===false || r.error)){
-    err.textContent='Relay did not start:\\n\\n'+(r.error||'unknown error');
+  if(r && r.error){
+    err.textContent=(action==='stop'?'':'Relay did not start:\\n\\n')+r.error;
+    err.style.display='block';
+  } else if((action==='start'||action==='restart') && r && r.running===false){
+    err.textContent='Relay did not start (no further detail in the logs).';
     err.style.display='block';
   }
   refresh();
