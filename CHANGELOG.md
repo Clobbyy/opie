@@ -43,6 +43,14 @@ All notable changes to Opie are documented here. This project uses
   degrades gracefully instead of raising.
 
 ### Fixed
+- **Stop and the status dot now use ground truth: who holds the relay port.**
+  HTTP probes can miss a relay bound only to the Tailscale IP, and process-name
+  sweeps can miss relays from old installs — so the GUI could say "stopped" while
+  the phone still controlled the console. The panel now asks the OS directly
+  (`lsof`) which processes are LISTENING on the relay port on any interface:
+  the status dot reports running if anyone holds the port, Stop kills every
+  holder, and Stop's verification fails loudly (naming the surviving PID, or a
+  launchd agent that refused to unload) instead of reporting false success.
 - **Stop is verified, and works even without the launchd plist.** The Stop button
   now confirms the relay port actually went quiet and shows an error if anything
   still answers; `launchctl unload` falls back to `bootout` by label when the

@@ -128,8 +128,24 @@ class Controller:
         except (OSError, subprocess.SubprocessError, ValueError):
             return []
 
+    def _port_listeners(self, port=None):
+        """PIDs of every process LISTENING on the relay port, on ANY interface.
+        This is the ground truth the phone experiences — immune to the blind
+        spots of HTTP probes (relay bound only to the Tailscale IP) and of
+        process-name matching (a relay started by an old install)."""
+        port = port or self._port()
+        try:
+            r = subprocess.run(
+                ["lsof", "-t", "-nP", f"-iTCP:{port}", "-sTCP:LISTEN"],
+                capture_output=True, text=True, timeout=5)
+            return sorted({int(p) for p in r.stdout.split() if p.strip().isdigit()})
+        except (OSError, subprocess.SubprocessError, ValueError):
+            return []
+
     def _kill(self):
-        pids = set(self._relay_pids())
+        # Union of every way we can find a relay: name pattern, pidfile, and —
+        # decisively — whatever is actually holding the relay port.
+        pids = set(self._relay_pids()) | set(self._port_listeners())
         try:
             with open(self._pidfile()) as f:
                 pids.add(int(f.read().strip()))
@@ -258,7 +274,10 @@ class Controller:
         bind = str(cfg.get("BIND_ADDR", "")).strip()
         host = bind if bind and bind != "0.0.0.0" else socket.gethostname()
         return {
-            "running": self._health(port),
+            # Running = someone holds the relay port (what the phone sees),
+            # not merely "an HTTP probe got through" — a relay bound only to
+            # the Tailscale IP must never be reported as stopped.
+            "running": bool(self._port_listeners(port)) or self._health(port),
             "autostart": service.is_loaded(),
             "version": __version__,
             "revision": opie_update.current_revision() or "",
@@ -385,13 +404,27 @@ def make_handler(ctrl):
                                              or "The relay did not start. Check that "
                                                 "python3 works and the port is free.")
                     elif action == "stop":
-                        # Verify it actually died — a survivor here means some
-                        # process we don't know about holds the relay port.
+                        # Verify by ground truth: NOTHING may still be listening
+                        # on the relay port, on any interface. A survivor here is
+                        # exactly "GUI says stopped but the phone still works".
                         time.sleep(0.6)
-                        resp["running"] = ctrl._health(ctrl._port())
+                        leftover = ctrl._port_listeners()
+                        resp["running"] = bool(leftover) or ctrl._health(ctrl._port())
                         if resp["running"]:
-                            resp["error"] = ("Stop failed: something still answers "
-                                             "on the relay port. Check the logs.")
+                            resp["error"] = ("Stop failed: process "
+                                             f"{leftover or '(unknown)'} still holds "
+                                             "the relay port. Stop it manually or "
+                                             "reboot, then tell us how this happened.")
+                        elif service.is_loaded():
+                            # The agent survived disable(): launchd's KeepAlive
+                            # WILL resurrect the relay in a few seconds even
+                            # though the port is quiet right now.
+                            resp["running"] = True
+                            resp["error"] = ("Stop failed: the autostart agent "
+                                             "could not be unloaded, so the relay "
+                                             "will restart itself. Run "
+                                             "'launchctl bootout gui/$UID/com.opie.relay' "
+                                             "in Terminal and report this.")
                     self._json(resp)
                 elif p.path == "/api/test":
                     code, body = ctrl.test(str(data.get("phrase", "")))
