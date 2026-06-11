@@ -195,8 +195,26 @@ def make_handler(relay, run_info=None):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
 
+        def handle(self):
+            # Siri/Shortcuts (and the panel's health poll) routinely slam the
+            # socket shut the instant they have their reply. The stdlib HTTP
+            # server turns that into a ConnectionReset/BrokenPipe traceback that
+            # LOOKS like a relay crash in the logs (and got shown in the "Relay
+            # did not start" box). It's harmless — swallow it.
+            try:
+                super().handle()
+            except (ConnectionResetError, BrokenPipeError, TimeoutError):
+                pass
+
         def log_message(self, fmt, *a):
             log.info("%s - %s", self.client_address[0], fmt % a)
+
+        def log_request(self, code="-", size="-"):
+            # The panel polls /health every couple seconds; logging each one
+            # buries the OSC traffic that actually matters. Skip health noise.
+            if isinstance(self.requestline, str) and " /health " in self.requestline:
+                return
+            super().log_request(code, size)
 
         def _reply(self, code, text):
             body = (text or "").encode("utf-8")
