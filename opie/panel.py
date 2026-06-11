@@ -158,9 +158,16 @@ class Controller:
     def relay_log_tail(self, lines=40):
         try:
             with open(self._outlog(), "r", errors="replace") as f:
-                return "".join(f.readlines()[-lines:]).strip()
+                rows = f.readlines()
         except OSError:
             return ""
+        # Only report the current run: cut at the last "--- starting relay"
+        # marker so a days-old startup line can't be shown as today's error.
+        for i in range(len(rows) - 1, -1, -1):
+            if rows[i].startswith("--- starting relay"):
+                rows = rows[i:]
+                break
+        return "".join(rows[-lines:]).strip()
 
     def ensure_running(self):
         if not self._health(self._port()):
@@ -366,6 +373,10 @@ def main():
     args = ap.parse_args()
 
     ctrl = Controller(args.config)
+    try:
+        service.ensure_app_launcher()  # keep the clickable Opie.app current
+    except Exception:  # noqa: BLE001
+        pass
     url = f"http://{PANEL_HOST}:{args.port}/"
     try:
         server = ThreadingHTTPServer((PANEL_HOST, args.port), make_handler(ctrl))
@@ -537,8 +548,15 @@ const $=id=>document.getElementById(id);
 async function api(path,opts){ const r=await fetch(path,opts); return r.json(); }
 function copy(t){ navigator.clipboard.writeText(t).catch(()=>{}); }
 
+const PANEL_DOWN='The Opie panel app is not running (the relay may be fine). Open the Opie app, then try again.';
 async function refresh(){
-  let d; try{ d=await api('/api/state'); }catch(e){ $('status').textContent='Panel error'; return; }
+  let d;
+  try{ d=await api('/api/state'); }
+  catch(e){
+    $('dot').className='dot';
+    $('status').textContent='Panel closed — open the Opie app to reconnect';
+    return;
+  }
   const s=d.status;
   $('dot').className='dot'+(s.running?' on':'');
   $('status').textContent=(s.running?'Running':'Stopped')+(s.autostart?' · autostart on':'');
@@ -564,31 +582,42 @@ async function save(restart){
   const cfg={ destructive_policy:$('destructive_policy').value, auto_update:$('auto_update').checked,
               macro_map:macro, key_map:key, restart:restart };
   for(const k of ['NOMAD_IP','EOS_RX_PORT','HTTP_PORT','BIND_ADDR','LOG_FILE','TOKEN','OSC_USER']) cfg[k]=$(k).value;
-  const r=await api('/api/config',{method:'POST',body:JSON.stringify(cfg)});
-  $('saved').className='ok'; $('saved').textContent=r.ok?(restart?'Saved & restarting…':'Saved.'):(r.error||'Error');
+  let r;
+  try{ r=await api('/api/config',{method:'POST',body:JSON.stringify(cfg)}); }
+  catch(e){ $('saved').className='err'; $('saved').textContent='NOT saved — '+PANEL_DOWN; return; }
+  if(!r.ok){ $('saved').className='err'; $('saved').textContent=r.error||'Save failed'; return; }
+  $('saved').className='ok'; $('saved').textContent=restart?'Saved & restarting…':'Saved.';
   setTimeout(()=>$('saved').textContent='',2500);
 }
 async function ctl(action){
   const err=$('relayerr'); err.style.display='none'; err.textContent='';
-  let r; try{ r=await api('/api/control',{method:'POST',body:JSON.stringify({action})}); }catch(e){ r={}; }
+  let r;
+  try{ r=await api('/api/control',{method:'POST',body:JSON.stringify({action})}); }
+  catch(e){ err.textContent=PANEL_DOWN; err.style.display='block'; refresh(); return; }
   if((action==='start'||action==='restart') && r && (r.running===false || r.error)){
     err.textContent='Relay did not start:\\n\\n'+(r.error||'unknown error');
     err.style.display='block';
   }
   refresh();
 }
-async function genToken(){ const r=await api('/api/token'); $('TOKEN').value=r.token; }
+async function genToken(){
+  try{ const r=await api('/api/token'); $('TOKEN').value=r.token; }
+  catch(e){ $('saved').className='err'; $('saved').textContent=PANEL_DOWN; }
+}
 async function sendTest(){
   $('testres').textContent='sending…'; $('testres').className='note';
-  const r=await api('/api/test',{method:'POST',body:JSON.stringify({phrase:$('phrase').value})});
+  let r; try{ r=await api('/api/test',{method:'POST',body:JSON.stringify({phrase:$('phrase').value})}); }
+  catch(e){ $('testres').className='note err'; $('testres').textContent='✗ '+PANEL_DOWN; return; }
   const ok=r.code===200; $('testres').className='note '+(ok?'ok':'err');
   $('testres').textContent=(ok?'✓ ':'✗ '+(r.code||'')+' ')+r.body;
 }
 async function pingConsole(){ $('misc').textContent='pinging…';
-  const r=await api('/api/ping?ip='+encodeURIComponent($('NOMAD_IP').value));
+  let r; try{ r=await api('/api/ping?ip='+encodeURIComponent($('NOMAD_IP').value)); }
+  catch(e){ $('misc').textContent='✗ '+PANEL_DOWN; return; }
   $('misc').textContent=r.ok?('✓ '+r.ip+' is reachable'):('✗ '+r.ip+' did not respond'); }
 async function checkUpdate(){ $('misc').textContent='checking…';
-  const r=await api('/api/update',{method:'POST',body:'{}'});
+  let r; try{ r=await api('/api/update',{method:'POST',body:'{}'}); }
+  catch(e){ $('misc').textContent='✗ '+PANEL_DOWN; return; }
   $('misc').textContent=r.message; if(r.status==='updated') setTimeout(refresh,800); }
 async function pollLogs(){ if(!paused){ try{ const r=await api('/api/logs?pos='+logpos);
   if(r.text){ const el=$('log'); el.textContent+=r.text; el.scrollTop=el.scrollHeight; } logpos=r.pos; }catch(e){} } }
