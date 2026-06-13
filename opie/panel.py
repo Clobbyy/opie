@@ -563,171 +563,342 @@ def main():
 # The single-page UI (vanilla HTML/CSS/JS, no external assets — works offline). #
 # --------------------------------------------------------------------------- #
 PAGE = """<!doctype html>
-<html lang="en"><head>
+<html lang="en" data-theme="dark"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Opie Control</title>
 <style>
-  :root { color-scheme: light dark; }
-  * { box-sizing: border-box; }
-  body { font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-         margin: 0; background: #f5f5f7; color: #1d1d1f; }
-  @media (prefers-color-scheme: dark) { body { background:#1c1c1e; color:#f2f2f7; }
-    .card{background:#2c2c2e!important;} input,select,textarea{background:#1c1c1e;color:#f2f2f7;border-color:#48484a!important;}
-    button{background:#48484a;color:#f2f2f7;border-color:#646469;} button:hover{background:#545458;} }
-  header { display:flex; align-items:center; gap:10px; padding:14px 20px;
-           background:#fff; border-bottom:1px solid #d2d2d7; position:sticky; top:0; }
-  @media (prefers-color-scheme: dark){ header{background:#2c2c2e;border-color:#3a3a3c;} }
-  .dot { width:12px;height:12px;border-radius:50%;background:#8e8e93; flex:0 0 auto; }
-  .dot.on { background:#34c759; }
-  h1 { font-size:16px; margin:0; font-weight:600; }
-  .muted { color:#8e8e93; }
-  main { max-width:760px; margin:18px auto; padding:0 16px; }
-  .card { background:#fff; border:1px solid #d2d2d7; border-radius:12px;
-          padding:16px 18px; margin-bottom:16px; }
-  .card h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em;
-             color:#8e8e93; margin:0 0 12px; }
-  label { display:block; font-weight:500; margin:10px 0 4px; }
-  input, select, textarea { width:100%; padding:7px 9px; border:1px solid #c7c7cc;
-            border-radius:8px; font:inherit; }
-  textarea { font-family: ui-monospace, Menlo, monospace; min-height:84px; }
-  .row { display:flex; gap:12px; flex-wrap:wrap; }
-  .row > div { flex:1; min-width:140px; }
-  button { font:inherit; font-weight:600; padding:8px 16px; border-radius:8px;
-           border:1px solid #b0b0b6; background:#e7e7ec; color:#1d1d1f;
-           cursor:pointer; -webkit-appearance:none; appearance:none; }
-  button:hover { background:#d8d8df; }
-  button:active { transform: translateY(1px); }
-  button.primary { background:#0071e3; color:#fff; border-color:#0071e3; }
-  button.primary:hover { background:#0064c8; }
-  button:disabled { opacity:.4; cursor:not-allowed; }
-  .bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-  .grow { flex:1; }
-  pre#log { background:#0b0b0c; color:#e6e6e6; padding:12px; border-radius:8px;
-            height:260px; overflow:auto; white-space:pre-wrap; font:12px ui-monospace,Menlo,monospace; }
-  .note { font-size:13px; }
-  code { background:#0001; padding:1px 5px; border-radius:5px; }
-  @media (prefers-color-scheme: dark){ code{background:#fff2;} }
-  .ok { color:#34c759; } .err { color:#ff3b30; }
-  .pill { font-size:12px; padding:2px 8px; border-radius:999px; background:#0001; }
+:root{
+  color-scheme:dark;
+  --bg:oklch(0.17 0.012 275); --surface:oklch(0.21 0.014 275); --surface-2:oklch(0.25 0.016 275);
+  --line:oklch(0.32 0.02 275); --text:oklch(0.96 0.006 275); --dim:oklch(0.72 0.014 275);
+  --faint:oklch(0.55 0.014 275); --accent:oklch(0.62 0.20 285); --accent-2:oklch(0.66 0.20 305);
+  --ring:oklch(0.62 0.20 285 / .45); --ok:oklch(0.78 0.16 150); --warn:oklch(0.82 0.15 85);
+  --err:oklch(0.68 0.21 25);
+  --grad:linear-gradient(155deg, var(--accent), var(--accent-2));
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  --ease:cubic-bezier(.22,1,.36,1);
+}
+html[data-theme="light"]{
+  color-scheme:light;
+  --bg:oklch(0.97 0.006 275); --surface:oklch(0.995 0.003 275); --surface-2:oklch(0.95 0.008 275);
+  --line:oklch(0.88 0.012 275); --text:oklch(0.24 0.02 275); --dim:oklch(0.46 0.02 275);
+  --faint:oklch(0.58 0.02 275); --accent:oklch(0.52 0.20 285); --accent-2:oklch(0.55 0.20 305);
+  --ring:oklch(0.52 0.20 285 / .35); --ok:oklch(0.56 0.16 150); --warn:oklch(0.60 0.15 75);
+  --err:oklch(0.55 0.22 25);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font:15px/1.55 var(--sans);background:var(--bg);color:var(--text);
+  -webkit-font-smoothing:antialiased;padding-bottom:52px}
+::selection{background:var(--ring)}
+
+.top{display:flex;align-items:center;gap:13px;max-width:760px;margin:0 auto;padding:18px 22px}
+.mark{width:30px;height:30px;flex:0 0 auto;filter:drop-shadow(0 1px 5px oklch(0.62 0.2 285 / .4))}
+.brand{display:flex;flex-direction:column;line-height:1.12}
+.brand b{font-size:16px;font-weight:650;letter-spacing:-.01em}
+.brand span{font-size:11.5px;color:var(--faint)}
+.top .sp{flex:1}
+.ver{font:11.5px/1.45 var(--mono);color:var(--faint);text-align:right;max-width:240px}
+.iconbtn{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;
+  border-radius:10px;border:1px solid var(--line);background:var(--surface);color:var(--dim);
+  cursor:pointer;transition:background .18s var(--ease),color .18s var(--ease)}
+.iconbtn:hover{background:var(--surface-2);color:var(--text)}
+.iconbtn:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring)}
+.iconbtn svg{width:17px;height:17px;flex:none}
+html[data-theme="dark"] .i-moon{display:none}
+html[data-theme="light"] .i-sun{display:none}
+
+main{max-width:760px;margin:0 auto;padding:0 22px;display:flex;flex-direction:column;gap:18px}
+
+.hero{position:relative;overflow:hidden;border-radius:18px;border:1px solid var(--line);
+  padding:22px 24px;background:
+    radial-gradient(130% 150% at 100% -10%, oklch(0.62 0.2 285 / .12), transparent 55%),
+    var(--surface)}
+.hero-top{display:flex;align-items:center;gap:16px}
+.signal{display:flex;align-items:flex-end;gap:4px;height:34px;width:48px;flex:0 0 auto}
+.signal i{flex:1;height:100%;border-radius:3px;background:var(--faint);transform:scaleY(.26);
+  transform-origin:bottom;transition:transform .3s var(--ease),background .3s var(--ease)}
+.hero[data-state="running"] .signal i,.hero[data-state="pulse"] .signal i{
+  background:var(--ok);animation:eq 1.1s var(--ease) infinite}
+.hero[data-state="pulse"] .signal i{animation-duration:.42s}
+.signal i:nth-child(1){animation-delay:0s} .signal i:nth-child(2){animation-delay:.16s}
+.signal i:nth-child(3){animation-delay:.34s} .signal i:nth-child(4){animation-delay:.1s}
+.signal i:nth-child(5){animation-delay:.26s}
+@keyframes eq{0%,100%{transform:scaleY(.28)}50%{transform:scaleY(1)}}
+.state{display:flex;flex-direction:column;gap:3px;min-width:0}
+.state b{font-size:26px;font-weight:680;letter-spacing:-.02em;line-height:1}
+.hero[data-state="running"] .state b,.hero[data-state="pulse"] .state b{color:var(--ok)}
+.state small{font-size:12.5px;color:var(--dim)}
+.tag{font:11px/1 var(--sans);font-weight:600;padding:5px 10px;border-radius:999px;
+  border:1px solid var(--line);color:var(--dim);background:var(--surface-2);white-space:nowrap}
+.tag.on{color:var(--ok);border-color:oklch(0.78 0.16 150 / .4)}
+.hl{margin-top:16px;font:12.5px/1.5 var(--mono);color:var(--dim);background:var(--bg);
+  border:1px solid var(--line);border-radius:10px;padding:10px 12px;word-break:break-all}
+.hl b{color:var(--text);font-weight:600} .hl .ar{color:var(--faint);padding:0 4px}
+.drift{display:none;margin-top:11px;font-size:12.5px;line-height:1.5;color:var(--warn)}
+.controls{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin-top:16px}
+.relayerr{display:none;margin-top:14px;font:12px/1.5 var(--mono);color:var(--err);white-space:pre-wrap;
+  background:oklch(0.68 0.21 25 / .09);border:1px solid oklch(0.68 0.21 25 / .32);
+  border-radius:10px;padding:11px 13px;max-height:200px;overflow:auto}
+
+.panel{border-radius:16px;border:1px solid var(--line);background:var(--surface);padding:20px 22px}
+.phead{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;margin:0 0 4px}
+.phead h2{font-size:15px;font-weight:620;margin:0;letter-spacing:-.01em}
+.phead p{margin:0;font-size:12.5px;color:var(--faint)}
+.grp{font:11px/1 var(--sans);font-weight:650;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--faint);margin:22px 0 13px;padding-top:17px;border-top:1px solid var(--line)}
+.grp.first{border-top:0;padding-top:0;margin-top:18px}
+
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:14px}
+.field>label{font-size:13px;font-weight:550;color:var(--text)}
+.hint{font-size:12px;color:var(--faint);font-weight:400}
+.note{font-size:12.5px;line-height:1.6;color:var(--dim);margin:-2px 0 6px}
+.cols{display:flex;gap:14px;flex-wrap:wrap}
+.cols>.field{flex:1;min-width:150px}
+input,select,textarea{width:100%;padding:9px 11px;font:14px var(--sans);color:var(--text);
+  background:var(--surface-2);border:1px solid var(--line);border-radius:10px;
+  transition:border-color .15s var(--ease),box-shadow .15s var(--ease);
+  -webkit-appearance:none;appearance:none}
+input:hover,select:hover,textarea:hover{border-color:var(--faint)}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--ring)}
+input.mono{font-family:var(--mono);font-size:13px}
+textarea{min-height:96px;resize:vertical;font-family:var(--mono);font-size:13px;line-height:1.5}
+select{padding-right:32px;cursor:pointer;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a8a96' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 11px center}
+
+.switch-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:6px 0}
+.switch-row .lab b{display:block;font-size:13px;font-weight:550}
+.switch-row .lab span{font-size:12px;color:var(--faint)}
+.switch{position:relative;width:44px;height:26px;flex:0 0 auto}
+.switch input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer;z-index:1}
+.switch .track{position:absolute;inset:0;border-radius:999px;background:var(--surface-2);
+  border:1px solid var(--line);transition:background .2s var(--ease),border-color .2s var(--ease)}
+.switch .track::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;
+  background:var(--dim);transition:transform .22s var(--ease),background .2s var(--ease)}
+.switch input:checked+.track{background:var(--grad);border-color:transparent}
+.switch input:checked+.track::after{transform:translateX(18px);background:#fff}
+.switch input:focus-visible+.track{box-shadow:0 0 0 3px var(--ring)}
+
+button{font:14px var(--sans);font-weight:600;padding:9px 16px;border-radius:10px;border:1px solid var(--line);
+  background:var(--surface-2);color:var(--text);cursor:pointer;
+  transition:background .15s var(--ease),border-color .15s var(--ease),filter .15s,transform .04s;
+  -webkit-appearance:none;appearance:none}
+button:hover{background:var(--line)}
+button:active{transform:translateY(1px)}
+button:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button.primary{background:var(--grad);color:#fff;border-color:transparent;
+  box-shadow:0 1px 14px oklch(0.62 0.2 285 / .35)}
+button.primary:hover{filter:brightness(1.07)}
+button.sm{padding:7px 12px;font-size:13px}
+
+.bar{display:flex;gap:9px;flex-wrap:wrap;align-items:center}
+.grow{flex:1}
+.feedback{font-size:12.5px;font-weight:550;min-height:1.1em}
+.feedback.ok{color:var(--ok)} .feedback.err{color:var(--err)} .feedback.muted{color:var(--faint)}
+code{font:12.5px var(--mono);background:var(--surface-2);border:1px solid var(--line);
+  padding:2px 6px;border-radius:6px;color:var(--text)}
+
+.cmdline{display:flex;gap:9px;align-items:stretch}
+.cmdline input{font-family:var(--mono)}
+.result{margin-top:13px;font:13px/1.5 var(--mono);min-height:1.2em;word-break:break-word;color:var(--dim)}
+.result.ok{color:var(--ok)} .result.err{color:var(--err)}
+.wiring{margin-top:18px;font-size:13px;color:var(--dim);line-height:1.85}
+.wiring b{color:var(--text)}
+
+.logbar{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.live{display:inline-flex;align-items:center;gap:7px;font-size:11.5px;color:var(--faint);margin-left:auto}
+.live .blip{width:7px;height:7px;border-radius:50%;background:var(--ok);animation:blip 1.9s var(--ease) infinite}
+@keyframes blip{0%{box-shadow:0 0 0 0 oklch(0.78 0.16 150 / .5)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
+pre#log{margin:0;background:oklch(0.13 0.012 275);color:oklch(0.88 0.012 275);border:1px solid var(--line);
+  border-radius:12px;padding:14px;height:280px;overflow:auto;white-space:pre-wrap;font:12.5px/1.55 var(--mono)}
+html[data-theme="light"] pre#log{background:oklch(0.23 0.015 275);color:oklch(0.93 0.01 275)}
+
+@media (max-width:560px){
+  .cols{flex-direction:column;gap:0}
+  .state b{font-size:22px}
+  .ver{display:none}
+}
+@media (prefers-reduced-motion:reduce){
+  .signal i{animation:none!important}
+  .live .blip{animation:none}
+}
 </style></head>
 <body>
-<header>
-  <span id="dot" class="dot"></span>
-  <h1 id="status">Connecting…</h1>
-  <span class="grow"></span>
-  <span id="ver" class="muted"></span>
-</header>
+<div class="top">
+  <svg class="mark" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs><linearGradient id="og" x1="32" y1="6" x2="32" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6366F1"/><stop offset="1" stop-color="#8B5CF6"/></linearGradient></defs>
+    <rect x="6" y="6" width="52" height="52" rx="15" fill="url(#og)"/>
+    <g stroke="#fff" stroke-opacity=".28" stroke-width="2.4" stroke-linecap="round">
+      <path d="M20 21V43"/><path d="M32 21V43"/><path d="M44 21V43"/></g>
+    <g fill="#fff">
+      <rect x="13.5" y="35" width="13" height="5.5" rx="2.75"/>
+      <rect x="25.5" y="23" width="13" height="5.5" rx="2.75"/>
+      <rect x="37.5" y="30" width="13" height="5.5" rx="2.75"/></g>
+  </svg>
+  <div class="brand"><b>Opie</b><span>Eos voice relay</span></div>
+  <div class="sp"></div>
+  <div id="ver" class="ver"></div>
+  <button id="themebtn" class="iconbtn" title="Toggle light / dark" aria-label="Toggle theme" onclick="toggleTheme()">
+    <svg class="i-moon" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+    <svg class="i-sun" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+  </button>
+</div>
+
 <main>
 
-  <div class="card">
-    <h2>Relay</h2>
-    <div class="bar">
-      <button class="primary" onclick="ctl('start')">Start</button>
+  <section class="hero" id="hero" data-state="stopped">
+    <div class="hero-top">
+      <div class="signal"><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="state"><b id="status">Connecting…</b><small id="substatus"></small></div>
+      <div class="sp" style="flex:1"></div>
+      <span id="autopill" class="tag" style="display:none"></span>
+    </div>
+    <div id="url" class="hl"></div>
+    <div id="drift" class="drift"></div>
+    <div class="controls">
+      <button class="primary" onclick="ctl('start')">Start relay</button>
       <button onclick="ctl('stop')">Stop</button>
       <button onclick="ctl('restart')">Restart</button>
-      <span class="grow"></span>
-      <label style="margin:0"><input type="checkbox" id="autostart" style="width:auto"
-        onchange="ctl(this.checked?'autostart_on':'autostart_off')"> Autostart at login</label>
     </div>
-    <p id="url" class="muted note" style="margin:10px 0 0"></p>
-    <pre id="relayerr" class="err" style="display:none; white-space:pre-wrap; margin:10px 0 0; font:12px ui-monospace,Menlo,monospace"></pre>
-  </div>
+    <div class="switch-row" style="margin-top:8px">
+      <div class="lab"><b>Autostart at login</b><span>Bring the relay up automatically after a reboot.</span></div>
+      <label class="switch"><input type="checkbox" id="autostart" onchange="ctl(this.checked?'autostart_on':'autostart_off')"><span class="track"></span></label>
+    </div>
+    <pre id="relayerr" class="relayerr"></pre>
+  </section>
 
-  <div class="card">
-    <h2>Setup</h2>
-    <div class="row">
-      <div><label>Console IP (Nomad/Eos)</label><input id="NOMAD_IP"></div>
-      <div><label>Console OSC RX port</label><input id="EOS_RX_PORT"></div>
+  <section class="panel">
+    <div class="phead"><h2>Setup</h2><p>Where the relay sends, and how it behaves.</p></div>
+
+    <div class="grp first">Console</div>
+    <div class="cols">
+      <div class="field"><label>Console IP <span class="hint">Nomad / Eos</span></label><input id="NOMAD_IP" class="mono" placeholder="10.0.0.5"></div>
+      <div class="field"><label>OSC RX port</label><input id="EOS_RX_PORT" class="mono"></div>
     </div>
-    <div class="row">
-      <div><label>Relay HTTP port</label><input id="HTTP_PORT"></div>
-      <div><label>Bind address</label><input id="BIND_ADDR"></div>
+
+    <div class="grp">Relay</div>
+    <div class="cols">
+      <div class="field"><label>HTTP port</label><input id="HTTP_PORT" class="mono"></div>
+      <div class="field"><label>Bind address <span class="hint">blank = all</span></label><input id="BIND_ADDR" class="mono"></div>
     </div>
-    <label>Log file (blank = default)</label><input id="LOG_FILE">
-    <div class="row">
-      <div><label>Destructive policy</label><select id="destructive_policy"></select></div>
-      <div><label>Eos OSC user <span class="muted">(0 = background)</span></label><input id="OSC_USER"></div>
-      <div><label>&nbsp;</label><label style="font-weight:500"><input type="checkbox" id="auto_update" style="width:auto"> Auto-update</label></div>
+    <div class="field"><label>Log file <span class="hint">blank = default</span></label><input id="LOG_FILE" class="mono"></div>
+
+    <div class="grp">Safety &amp; behavior</div>
+    <div class="cols">
+      <div class="field"><label>Destructive policy</label><select id="destructive_policy"></select></div>
+      <div class="field"><label>Eos OSC user <span class="hint">0 = background</span></label><input id="OSC_USER" class="mono"></div>
     </div>
-    <p class="note muted" style="margin:4px 0 0">Voice commands run as their own Eos user so they
-      never collide with cues other software (QLab, sound desks, …) sends to the console.
-      <code>0</code> = the invisible background user · a positive number = that user's command line ·
-      <code>-1</code> = share the console's OSC user (old behaviour).</p>
-    <label>Shared token <span class="muted">(the iPhone Shortcut sends this)</span></label>
-    <div class="bar">
-      <input id="TOKEN" class="grow">
-      <button onclick="genToken()">Generate</button>
-      <button onclick="copy(document.getElementById('TOKEN').value)">Copy</button>
+    <p class="note">Voice commands run as their own Eos user so they never collide with cues other
+      software (QLab, sound desks) sends to the console. <code>0</code> = the invisible background
+      user, a positive number = that user's command line, <code>-1</code> = share the console's OSC user.</p>
+    <div class="switch-row">
+      <div class="lab"><b>Auto-update</b><span>Pull and apply new Opie versions automatically.</span></div>
+      <label class="switch"><input type="checkbox" id="auto_update"><span class="track"></span></label>
     </div>
-    <div class="row" style="margin-top:8px">
-      <div><label>Macro map <span class="muted">(word → macro #)</span></label><textarea id="macro_map"></textarea></div>
-      <div><label>Key map <span class="muted">(word → key name)</span></label><textarea id="key_map"></textarea></div>
+
+    <div class="grp">Security token</div>
+    <div class="field"><label>Shared token <span class="hint">the iPhone Shortcut sends this</span></label>
+      <div class="bar">
+        <input id="TOKEN" class="mono grow">
+        <button class="sm" onclick="genToken()">Generate</button>
+        <button class="sm" onclick="copy($('TOKEN').value,this)">Copy</button>
+      </div>
     </div>
-    <div class="bar" style="margin-top:12px">
+
+    <div class="grp">Word maps</div>
+    <div class="cols">
+      <div class="field"><label>Macro map <span class="hint">word &rarr; macro #</span></label><textarea id="macro_map"></textarea></div>
+      <div class="field"><label>Key map <span class="hint">word &rarr; key name</span></label><textarea id="key_map"></textarea></div>
+    </div>
+
+    <div class="bar" style="margin-top:8px">
       <button class="primary" onclick="save(false)">Save</button>
-      <button onclick="save(true)">Save &amp; Restart</button>
-      <span id="saved" class="ok"></span>
+      <button onclick="save(true)">Save &amp; restart</button>
+      <span id="saved" class="feedback"></span>
     </div>
-  </div>
+  </section>
 
-  <div class="card">
-    <h2>Test &amp; phone setup</h2>
-    <div class="bar">
+  <section class="panel">
+    <div class="phead"><h2>Test &amp; phone setup</h2><p>Send a phrase, then wire the Shortcut.</p></div>
+    <div class="cmdline">
       <input id="phrase" class="grow" value="channel 5 at full" onkeydown="if(event.key==='Enter')sendTest()">
-      <button onclick="sendTest()">Send</button>
+      <button class="primary" onclick="sendTest()">Send</button>
     </div>
-    <p id="testres" class="note"></p>
-    <div class="bar" style="margin-top:6px">
-      <button onclick="pingConsole()">Check console reachable</button>
-      <button onclick="checkUpdate()">Check for updates</button>
-      <span id="misc" class="note muted"></span>
+    <div id="testres" class="result"></div>
+    <div class="bar" style="margin-top:13px">
+      <button class="sm" onclick="pingConsole()">Check console reachable</button>
+      <button class="sm" onclick="checkUpdate()">Check for updates</button>
+      <span id="misc" class="feedback muted"></span>
     </div>
-    <p class="note" style="margin-top:12px">
-      <b>iPhone Shortcut</b> — one “Get Contents of URL” action:<br>
-      URL <code id="purl"></code> · Method <code>POST</code> ·
-      Header <code>X-Token</code> = <code id="ptok"></code> · Body = the dictated phrase.
-      <button style="margin-left:6px" onclick="copy(document.getElementById('ptok').textContent)">Copy token</button>
-    </p>
-  </div>
+    <div class="wiring">
+      <b>iPhone Shortcut</b>, one “Get Contents of URL” action:<br>
+      URL <code id="purl"></code><br>
+      Method <code>POST</code>, header <code>X-Token</code> = <code id="ptok"></code>, body = the dictated phrase
+      <button class="sm" style="margin-left:8px" onclick="copy($('ptok').textContent,this)">Copy token</button>
+    </div>
+  </section>
 
-  <div class="card">
-    <h2>Logs</h2>
-    <div class="bar" style="margin-bottom:8px">
-      <button onclick="paused=!paused;this.textContent=paused?'Resume':'Pause'">Pause</button>
-      <button onclick="document.getElementById('log').textContent=''">Clear</button>
+  <section class="panel">
+    <div class="phead"><h2>Log</h2><p>Live tail of the relay, this run only.</p></div>
+    <div class="logbar">
+      <button class="sm" id="pausebtn" onclick="paused=!paused;$('pausebtn').textContent=paused?'Resume':'Pause'">Pause</button>
+      <button class="sm" onclick="$('log').textContent=''">Clear</button>
+      <span class="live"><span class="blip"></span> streaming</span>
     </div>
     <pre id="log"></pre>
-  </div>
+  </section>
 
 </main>
 <script>
 let logpos=0, paused=false, loaded=false;
 const $=id=>document.getElementById(id);
-async function api(path,opts){ const r=await fetch(path,opts); return r.json(); }
-function copy(t){ navigator.clipboard.writeText(t).catch(()=>{}); }
-
+const FIELDS=['NOMAD_IP','EOS_RX_PORT','HTTP_PORT','BIND_ADDR','LOG_FILE','TOKEN','OSC_USER'];
 const PANEL_DOWN='The Opie panel app is not running (the relay may be fine). Open the Opie app, then try again.';
+async function api(path,opts){ const r=await fetch(path,opts); return r.json(); }
+function esc(t){ return String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function copy(t,btn){ navigator.clipboard.writeText(t).catch(()=>{});
+  if(btn){ const o=btn.textContent; btn.textContent='Copied'; setTimeout(()=>{btn.textContent=o;},1200); } }
+function flash(el,cls,msg,keep){ el.className='feedback '+cls; el.textContent=msg;
+  if(!keep) setTimeout(()=>{ el.textContent=''; },2600); }
+
+function applyTheme(t){ document.documentElement.setAttribute('data-theme',t); try{localStorage.setItem('opie-theme',t);}catch(e){} }
+function toggleTheme(){ applyTheme(document.documentElement.getAttribute('data-theme')==='dark'?'light':'dark'); }
+(function(){ let t='dark'; try{ t=localStorage.getItem('opie-theme')||'dark'; }catch(e){} document.documentElement.setAttribute('data-theme',t); })();
+
 async function refresh(){
   let d;
   try{ d=await api('/api/state'); }
   catch(e){
-    $('dot').className='dot';
-    $('status').textContent='Panel closed — open the Opie app to reconnect';
+    $('hero').dataset.state='stopped';
+    $('status').textContent='Panel closed';
+    $('substatus').textContent='Open the Opie app to reconnect.';
     return;
   }
   const s=d.status;
-  $('dot').className='dot'+(s.running?' on':'');
-  $('status').textContent=(s.running?'Running':'Stopped')+(s.autostart?' · autostart on':'');
-  let ver='Opie '+s.version+(s.revision?(' · '+s.revision):'');
-  if(s.running && s.relay_revision && s.revision && s.relay_revision!==s.revision)
-    ver+=' · relay still on '+s.relay_revision+' — click “Check for updates” to apply';
-  $('ver').textContent=ver;
-  $('url').textContent='Relay: http://localhost:'+s.port+'  →  OSC '+(s.nomad_ip||'?')+':'+s.eos_port;
+  $('hero').dataset.state = s.running?'running':'stopped';
+  $('status').textContent = s.running?'Running':'Stopped';
+  $('substatus').textContent = s.running?'Listening for phrases.':'Relay is not running. Press Start.';
+  const ap=$('autopill');
+  if(s.autostart){ ap.style.display=''; ap.className='tag on'; ap.textContent='autostart on'; }
+  else { ap.style.display='none'; }
+  $('ver').textContent='Opie '+s.version+(s.revision?(' · '+s.revision):'');
+  $('url').innerHTML='Relay <b>http://localhost:'+s.port+'</b><span class="ar">&rarr;</span>OSC '
+    +esc(s.nomad_ip||'?')+':'+s.eos_port;
+  const drift=$('drift');
+  if(s.running && s.relay_revision && s.revision && s.relay_revision!==s.revision){
+    drift.style.display='block';
+    drift.textContent='Relay is still running '+s.relay_revision+', but '+s.revision
+      +' is installed. Click “Check for updates” to apply it.';
+  } else { drift.style.display='none'; }
   $('purl').textContent=s.phone_url; $('ptok').textContent=s.token;
   $('autostart').checked=s.autostart;
   if(!loaded){ // fill the form once so we don't clobber edits
     const c=d.config;
-    for(const k of ['NOMAD_IP','EOS_RX_PORT','HTTP_PORT','BIND_ADDR','LOG_FILE','TOKEN','OSC_USER']) $(k).value=c[k]??'';
+    for(const k of FIELDS) $(k).value=c[k]??'';
     const sel=$('destructive_policy'); sel.innerHTML='';
     for(const p of d.policies){ const o=document.createElement('option'); o.value=o.textContent=p; if(p===c.destructive_policy)o.selected=true; sel.appendChild(o); }
     $('auto_update').checked=!!c.auto_update;
@@ -739,16 +910,15 @@ async function refresh(){
 async function save(restart){
   let macro,key;
   try{ macro=JSON.parse($('macro_map').value||'{}'); key=JSON.parse($('key_map').value||'{}'); }
-  catch(e){ $('saved').className='err'; $('saved').textContent='Macro/Key map must be valid JSON'; return; }
+  catch(e){ flash($('saved'),'err','Macro / Key map must be valid JSON'); return; }
   const cfg={ destructive_policy:$('destructive_policy').value, auto_update:$('auto_update').checked,
               macro_map:macro, key_map:key, restart:restart };
-  for(const k of ['NOMAD_IP','EOS_RX_PORT','HTTP_PORT','BIND_ADDR','LOG_FILE','TOKEN','OSC_USER']) cfg[k]=$(k).value;
+  for(const k of FIELDS) cfg[k]=$(k).value;
   let r;
   try{ r=await api('/api/config',{method:'POST',body:JSON.stringify(cfg)}); }
-  catch(e){ $('saved').className='err'; $('saved').textContent='NOT saved — '+PANEL_DOWN; return; }
-  if(!r.ok){ $('saved').className='err'; $('saved').textContent=r.error||'Save failed'; return; }
-  $('saved').className='ok'; $('saved').textContent=restart?'Saved & restarting…':'Saved.';
-  setTimeout(()=>$('saved').textContent='',2500);
+  catch(e){ flash($('saved'),'err','Not saved. '+PANEL_DOWN); return; }
+  if(!r.ok){ flash($('saved'),'err',r.error||'Save failed'); return; }
+  flash($('saved'),'ok',restart?'Saved, restarting…':'Saved.');
 }
 async function ctl(action){
   const err=$('relayerr'); err.style.display='none'; err.textContent='';
@@ -765,26 +935,36 @@ async function ctl(action){
   refresh();
 }
 async function genToken(){
-  try{ const r=await api('/api/token'); $('TOKEN').value=r.token; }
-  catch(e){ $('saved').className='err'; $('saved').textContent=PANEL_DOWN; }
+  try{ const r=await api('/api/token'); $('TOKEN').value=r.token; flash($('saved'),'muted','New token generated. Save to apply.',true); }
+  catch(e){ flash($('saved'),'err',PANEL_DOWN); }
 }
 async function sendTest(){
-  $('testres').textContent='sending…'; $('testres').className='note';
+  const hero=$('hero'), prev=hero.dataset.state;
+  $('testres').className='result'; $('testres').textContent='Sending…';
   let r; try{ r=await api('/api/test',{method:'POST',body:JSON.stringify({phrase:$('phrase').value})}); }
-  catch(e){ $('testres').className='note err'; $('testres').textContent='✗ '+PANEL_DOWN; return; }
-  const ok=r.code===200; $('testres').className='note '+(ok?'ok':'err');
+  catch(e){ $('testres').className='result err'; $('testres').textContent=PANEL_DOWN; return; }
+  const ok=r.code===200;
+  $('testres').className='result '+(ok?'ok':'err');
   $('testres').textContent=(ok?'✓ ':'✗ '+(r.code||'')+' ')+r.body;
+  if(ok && prev==='running'){ hero.dataset.state='pulse'; setTimeout(()=>{ hero.dataset.state=prev; },420); }
 }
-async function pingConsole(){ $('misc').textContent='pinging…';
+async function pingConsole(){
+  flash($('misc'),'muted','Pinging…',true);
   let r; try{ r=await api('/api/ping?ip='+encodeURIComponent($('NOMAD_IP').value)); }
-  catch(e){ $('misc').textContent='✗ '+PANEL_DOWN; return; }
-  $('misc').textContent=r.ok?('✓ '+r.ip+' is reachable'):('✗ '+r.ip+' did not respond'); }
-async function checkUpdate(){ $('misc').textContent='checking…';
+  catch(e){ flash($('misc'),'err',PANEL_DOWN,true); return; }
+  if(r.ok) flash($('misc'),'ok','✓ '+r.ip+' is reachable',true);
+  else flash($('misc'),'err','✗ '+r.ip+' did not respond',true);
+}
+async function checkUpdate(){
+  flash($('misc'),'muted','Checking…',true);
   let r; try{ r=await api('/api/update',{method:'POST',body:'{}'}); }
-  catch(e){ $('misc').textContent='✗ '+PANEL_DOWN; return; }
-  $('misc').textContent=r.message; if(r.status==='updated') setTimeout(refresh,800); }
-async function pollLogs(){ if(!paused){ try{ const r=await api('/api/logs?pos='+logpos);
-  if(r.text){ const el=$('log'); el.textContent+=r.text; el.scrollTop=el.scrollHeight; } logpos=r.pos; }catch(e){} } }
+  catch(e){ flash($('misc'),'err',PANEL_DOWN,true); return; }
+  flash($('misc'),'muted',r.message,true); if(r.status==='updated') setTimeout(refresh,800);
+}
+async function pollLogs(){ if(paused) return;
+  try{ const r=await api('/api/logs?pos='+logpos);
+    if(r.text){ const el=$('log'); const atBottom=el.scrollHeight-el.scrollTop-el.clientHeight<40;
+      el.textContent+=r.text; if(atBottom) el.scrollTop=el.scrollHeight; } logpos=r.pos; }catch(e){} }
 
 refresh(); setInterval(refresh,2500); setInterval(pollLogs,1000);
 </script>

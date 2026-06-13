@@ -62,19 +62,23 @@ Full console details: [`docs/OSC_REFERENCE.md`](docs/OSC_REFERENCE.md).
 
 ## The control panel
 
-Open **Opie** (Applications or Spotlight) to launch the panel in your browser
-(`http://localhost:8766` — reachable only from this Mac). One page, four sections:
+Open **Opie** (Applications or Spotlight) to launch the control panel in its own
+window (it serves a localhost page on `http://localhost:8766` — reachable only from
+this Mac). Top to bottom:
 
-- **Relay** — Start / Stop / Restart and Autostart at login. A status dot shows
-  running/stopped and the listening URL.
-- **Setup** — Console IP, ports, security token, safety policy, and your word maps
-  (spoken word → console macro, spoken word → console key). Save or Save & Restart.
-- **Test & phone setup** — send a phrase and hear the reply, check the console is
-  reachable, and copy your iPhone Shortcut URL + token.
-- **Logs** — live tail of the relay log.
+- **Status** — a live signal meter and a big Running/Stopped readout, the relay's
+  listening URL, Start / Stop / Restart, and Autostart at login. If the running relay
+  is behind the installed version, a notice prompts you to update.
+- **Setup** — Console IP, ports, security token, safety policy, the Eos OSC user, and
+  your word maps (spoken word → console macro, spoken word → console key). Save or
+  Save & restart.
+- **Test & phone setup** — send a phrase and read the console's reply, check the
+  console is reachable, and copy your iPhone Shortcut URL + token.
+- **Log** — live tail of the relay, for the current run.
 
-To add a scene word (e.g. "blackout"): make a console macro, then map the word to it in
-**Setup**.
+The sun/moon button (top right) switches between dark and light; it opens dark, made
+for the booth. To add a scene word (e.g. "blackout"): make a console macro, then map
+the word to it in **Setup**.
 
 ---
 

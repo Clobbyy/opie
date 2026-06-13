@@ -249,35 +249,66 @@ def _read_text(path) -> str:
 
 
 def _install_icon(res_dir):
-    """Copy the bundled .icns into the app's Resources (idempotent, best-effort)."""
+    """Copy the bundled .icns into the app's Resources (idempotent, best-effort).
+
+    Returns True if the icon was written or replaced, False if it was already
+    current or unavailable. The caller uses this to know when to bust the macOS
+    icon cache (see _refresh_launchservices)."""
     src = _icon_source_path()
     if not os.path.exists(src):
-        return
+        return False
     try:
         with open(src, "rb") as f:
             data = f.read()
     except OSError:
-        return
+        return False
     dst = os.path.join(res_dir, "Opie.icns")
     try:
         with open(dst, "rb") as f:
             if f.read() == data:
-                return
+                return False
     except OSError:
         pass
     try:
         with open(dst, "wb") as f:
             f.write(data)
     except OSError:
+        return False
+    return True
+
+
+def _refresh_launchservices(app):
+    """Bust the macOS icon/metadata cache after the .app's contents change.
+
+    Finder, the Dock, and LaunchServices cache an app's icon keyed on the bundle
+    directory's mtime. A fresh Opie.icns dropped *inside* Contents/Resources never
+    changes the .app root mtime, so an originally icon-less bundle (Opie shipped a
+    bash launcher before it had an icon) keeps showing the generic placeholder
+    forever. Bumping the bundle mtime and re-registering forces the new icon to
+    take. Best-effort: this is cosmetic, never fatal."""
+    try:
+        os.utime(app, None)  # touch the bundle root so the cache sees a change
+    except OSError:
         pass
+    lsregister = ("/System/Library/Frameworks/CoreServices.framework/Frameworks/"
+                  "LaunchServices.framework/Support/lsregister")
+    if os.path.exists(lsregister):
+        try:
+            subprocess.run([lsregister, "-f", app],
+                           capture_output=True, timeout=20)
+        except (OSError, subprocess.SubprocessError):
+            pass
 
 
-def _build_native_app(macos_dir) -> bool:
+def _build_native_app(macos_dir):
     """
     Compile the native WKWebView shell (resources/OpieApp.swift) into
-    Contents/MacOS/Opie with swiftc from the Command Line Tools. Returns True on
-    success, False if swiftc is missing or the build fails (caller then writes the
-    bash fallback launcher).
+    Contents/MacOS/Opie with swiftc from the Command Line Tools.
+
+    Returns (ok, rebuilt): ok is True when a valid binary is in place, rebuilt is
+    True only when this call actually recompiled it (so the caller can bust the
+    icon cache on a real change). On failure ok is False and the caller writes the
+    bash fallback launcher.
 
     A content hash gates the compile so it only runs when the Swift source or the
     toolchain changed, or the binary is missing — ensure_app_launcher() is called
@@ -287,15 +318,15 @@ def _build_native_app(macos_dir) -> bool:
     """
     swiftc = _find_swiftc()
     if not swiftc:
-        return False
+        return (False, False)
     src = _read_text(_swift_source_path())
     if not src:
-        return False
+        return (False, False)
     bin_path = os.path.join(macos_dir, "Opie")
     stamp_path = os.path.join(macos_dir, ".opie_build")
     stamp = hashlib.sha256(("v1\x00" + swiftc + "\x00" + src).encode("utf-8")).hexdigest()
     if _is_macho(bin_path) and _read_text(stamp_path).strip() == stamp:
-        return True  # already built from this exact source + toolchain
+        return (True, False)  # already built from this exact source + toolchain
     build_dir = os.path.join(opie_config.app_support_dir(), "build")
     try:
         os.makedirs(build_dir, exist_ok=True)
@@ -309,21 +340,21 @@ def _build_native_app(macos_dir) -> bool:
              "-framework", "Cocoa", "-framework", "WebKit"],
             capture_output=True, text=True, timeout=180)
     except (OSError, subprocess.SubprocessError):
-        return False
+        return (False, False)
     if r.returncode != 0 or not _is_macho(out_tmp):
         try:
             os.remove(out_tmp)
         except OSError:
             pass
-        return False
+        return (False, False)
     try:
         os.replace(out_tmp, bin_path)
         os.chmod(bin_path, 0o755)
         with open(stamp_path, "w", encoding="utf-8") as f:
             f.write(stamp)
     except OSError:
-        return False
-    return True
+        return (False, False)
+    return (True, True)
 
 
 def ensure_app_launcher():
@@ -351,18 +382,28 @@ def ensure_app_launcher():
     os.makedirs(macos_dir, exist_ok=True)
     os.makedirs(res_dir, exist_ok=True)
 
-    _install_icon(res_dir)
-    _write_if_changed(os.path.join(app, "Contents", "Info.plist"),
-                      _APP_PLIST.replace("{VERSION}", __version__))
+    # Track whether anything inside the bundle actually changed; only then do we
+    # bust the macOS icon cache (lsregister on every panel start would thrash).
+    changed = _install_icon(res_dir)
+    if _write_if_changed(os.path.join(app, "Contents", "Info.plist"),
+                         _APP_PLIST.replace("{VERSION}", __version__)):
+        changed = True
 
-    if not _build_native_app(macos_dir):
+    ok, rebuilt = _build_native_app(macos_dir)
+    if ok:
+        changed = changed or rebuilt
+    else:
         # Fallback: the browser launcher (still zero-dependency, always works).
         py_line = f"export PYTHONPATH={shlex.quote(root)}\n" if root else ""
-        _write_if_changed(os.path.join(macos_dir, "Opie"),
-                          _APP_LAUNCHER.replace("{PYTHONPATH_LINE}", py_line),
-                          mode=0o755)
+        if _write_if_changed(os.path.join(macos_dir, "Opie"),
+                             _APP_LAUNCHER.replace("{PYTHONPATH_LINE}", py_line),
+                             mode=0o755):
+            changed = True
         try:  # drop a stale stamp so a later run with swiftc rebuilds cleanly
             os.remove(os.path.join(macos_dir, ".opie_build"))
         except OSError:
             pass
+
+    if changed:
+        _refresh_launchservices(app)
     return app
